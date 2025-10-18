@@ -198,10 +198,6 @@ resource "azurerm_monitor_diagnostic_setting" "aks" {
   enabled_log {
     category = "cluster-autoscaler"
   }
-
-  metric {
-    category = "AllMetrics"
-  }
 }
 
 # =============================================================================
