@@ -1,0 +1,113 @@
+# Example Terraform Variables for vSphere Tier 1 (Demo)
+# Copy this file to terraform.tfvars and customize values
+
+# =============================================================================
+# vSphere Connection
+# =============================================================================
+vsphere_server       = "vcenter.corp.local"  # Your vCenter FQDN or IP
+vsphere_user         = "administrator@vsphere.local"
+vsphere_password     = "YourVCenterPassword"  # CHANGE THIS
+allow_unverified_ssl = true  # Set to false in production with valid certs
+
+# =============================================================================
+# vSphere Infrastructure
+# =============================================================================
+datacenter    = "Datacenter"        # Your vSphere datacenter name
+cluster       = "Cluster01"         # Your vSphere cluster name
+datastore     = "datastore1"        # Datastore for VM storage
+datastore_iso = "datastore1"        # Datastore for ISO files (optional)
+network_name  = "VM Network"        # Port group / network name
+
+# =============================================================================
+# VM Templates (must exist in vCenter)
+# =============================================================================
+template_ubuntu_22          = "ubuntu-22.04-template"
+template_windows_server_2022 = "windows-server-2022-template"
+template_windows_11         = "windows-11-template"
+
+# =============================================================================
+# Project Configuration
+# =============================================================================
+project_name = "admigration"
+environment  = "demo"
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+network_cidr = "10.0.0.0/16"
+gateway      = "10.0.0.1"       # Your network gateway
+netmask      = 24               # Subnet mask (24 = /24)
+
+dns_servers = ["10.0.0.1", "8.8.8.8"]  # Your DNS servers
+ntp_servers = ["time.nist.gov"]
+domain      = "migration.local"
+
+# Static IP Assignments
+guacamole_ip           = "10.0.1.10"
+ansible_controller_ip  = "10.0.2.10"
+postgres_ip            = "10.0.2.20"
+source_dc_ip           = "10.0.10.10"
+target_dc_ip           = "10.0.20.10"
+
+# =============================================================================
+# Credentials
+# =============================================================================
+admin_username = "administrator"
+admin_password = "Change-Me-Complex-Password123!"  # Min 12 chars, complex
+
+# SSH public key for Linux VMs
+ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQD... your-key-here"
+
+postgres_password = "Change-Me-Postgres-Password123!"
+
+# =============================================================================
+# Domain Configuration
+# =============================================================================
+source_domain_fqdn = "source.local"
+target_domain_fqdn = "target.local"
+
+# =============================================================================
+# VM Resource Allocation
+# =============================================================================
+# Guacamole Bastion
+guacamole_vcpu      = 2
+guacamole_memory_mb = 2048
+
+# Ansible Controller
+ansible_vcpu      = 2
+ansible_memory_mb = 4096
+
+# Domain Controllers
+dc_vcpu      = 2
+dc_memory_mb = 4096
+
+# PostgreSQL
+postgres_vcpu      = 2
+postgres_memory_mb = 4096
+
+# Test Workstations
+workstation_vcpu      = 2
+workstation_memory_mb = 4096
+
+# Disk size (GB)
+disk_size_gb = 100
+
+# =============================================================================
+# Feature Flags
+# =============================================================================
+enable_guacamole       = true
+enable_monitoring      = true
+num_test_workstations  = 2
+
+# =============================================================================
+# Tags (applied as VM notes/annotations)
+# =============================================================================
+tags = {
+  Project     = "AD-Migration"
+  Environment = "Demo"
+  Owner       = "Adrian Johnson"
+  ManagedBy   = "Terraform"
+  Tier        = "1"
+}
+
+

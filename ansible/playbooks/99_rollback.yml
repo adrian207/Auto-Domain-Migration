@@ -1,0 +1,157 @@
+---
+# Playbook: 99_rollback.yml
+# Purpose: Rollback migration in case of failure
+# Usage: ansible-playbook -i inventory/hosts.ini playbooks/99_rollback.yml -e "migration_batch_id=batch_001"
+# WARNING: This will remove migrated objects from target domain
+
+- name: Rollback Confirmation
+  hosts: localhost
+  gather_facts: no
+  
+  vars_prompt:
+    - name: confirm_rollback
+      prompt: "Are you sure you want to rollback batch {{ migration_batch_id | default('UNKNOWN') }}? This will remove migrated objects. Type 'YES' to confirm"
+      private: no
+  
+  tasks:
+    - name: Verify rollback confirmation
+      ansible.builtin.fail:
+        msg: "Rollback cancelled - confirmation not provided"
+      when: confirm_rollback != "YES"
+
+    - name: Display rollback warning
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          WARNING: Starting Rollback
+          ========================================
+          Batch ID: {{ migration_batch_id }}
+          
+          This will:
+          1. Remove migrated users from target domain
+          2. Remove migrated groups from target domain
+          3. Remove migrated computers from target domain
+          4. Preserve SID history for potential re-migration
+          
+          Original objects in source domain are NOT affected.
+          ========================================
+
+- name: Execute Rollback
+  hosts: target_dc
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Verify migration batch ID is provided
+      ansible.builtin.fail:
+        msg: "Migration batch ID must be provided: -e migration_batch_id=<batch_id>"
+      when: migration_batch_id is not defined
+
+    - name: Load migrated objects list
+      ansible.builtin.set_fact:
+        migrated_users: "{{ lookup('file', '/opt/ansible/data/batches/' + migration_batch_id + '_users.json', errors='ignore') | default('[]') | from_json }}"
+        migrated_computers: "{{ lookup('file', '/opt/ansible/data/batches/' + migration_batch_id + '_computers.json', errors='ignore') | default('[]') | from_json }}"
+        migrated_groups: "{{ lookup('file', '/opt/ansible/data/batches/' + migration_batch_id + '_groups.json', errors='ignore') | default('[]') | from_json }}"
+
+  tasks:
+    - name: Import ADMT Functions module
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+      changed_when: false
+
+    - name: Execute rollback using ADMT module
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+        Invoke-ADMTRollback -BatchId "{{ migration_batch_id }}" -Force -Verbose
+      register: rollback_result
+
+    - name: Display rollback result
+      ansible.builtin.debug:
+        msg: "{{ rollback_result.stdout_lines }}"
+
+    - name: Remove migrated users from target domain
+      ansible.windows.win_shell: |
+        $users = @({{ migrated_users | map('quote') | join(',') }})
+        $results = @()
+        
+        foreach ($user in $users) {
+            try {
+                Remove-ADUser -Identity $user -Confirm:$false -ErrorAction Stop
+                $results += "Removed user: $user"
+                Write-Output "Removed user: $user"
+            } catch {
+                $results += "Failed to remove user $user : $_"
+                Write-Warning "Failed to remove user $user : $_"
+            }
+        }
+      register: user_rollback
+      when: migrated_users | length > 0
+
+    - name: Remove migrated groups from target domain
+      ansible.windows.win_shell: |
+        $groups = @({{ migrated_groups | map('quote') | join(',') }})
+        $results = @()
+        
+        foreach ($group in $groups) {
+            try {
+                Remove-ADGroup -Identity $group -Confirm:$false -ErrorAction Stop
+                $results += "Removed group: $group"
+                Write-Output "Removed group: $group"
+            } catch {
+                $results += "Failed to remove group $group : $_"
+                Write-Warning "Failed to remove group $group : $_"
+            }
+        }
+      register: group_rollback
+      when: migrated_groups | length > 0
+
+    - name: Remove migrated computers from target domain
+      ansible.windows.win_shell: |
+        $computers = @({{ migrated_computers | map('quote') | join(',') }})
+        $results = @()
+        
+        foreach ($computer in $computers) {
+            try {
+                Remove-ADComputer -Identity $computer -Confirm:$false -ErrorAction Stop
+                $results += "Removed computer: $computer"
+                Write-Output "Removed computer: $computer"
+            } catch {
+                $results += "Failed to remove computer $computer : $_"
+                Write-Warning "Failed to remove computer $computer : $_"
+            }
+        }
+      register: computer_rollback
+      when: migrated_computers | length > 0
+
+    - name: Update state database with rollback
+      ansible.builtin.uri:
+        url: "https://{{ postgres_host }}/api/migration/rollback"
+        method: POST
+        body_format: json
+        body:
+          batch_id: "{{ migration_batch_id }}"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          status: "rolled_back"
+          removed_users: "{{ migrated_users | length }}"
+          removed_computers: "{{ migrated_computers | length }}"
+          removed_groups: "{{ migrated_groups | length }}"
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+      delegate_to: localhost
+
+  post_tasks:
+    - name: Display rollback completion
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Rollback Complete for Batch {{ migration_batch_id }}
+          ========================================
+          
+          Removed:
+          - Users: {{ migrated_users | length }}
+          - Computers: {{ migrated_computers | length }}
+          - Groups: {{ migrated_groups | length }}
+          
+          Original objects remain in source domain.
+          Review logs for any failures during rollback.
+          ========================================
+

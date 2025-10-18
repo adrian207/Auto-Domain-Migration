@@ -1,0 +1,25 @@
+---
+# Default variables for usmt_backup role
+
+# Azure Storage
+azure_storage_account: "{{ lookup('env', 'AZURE_STORAGE_ACCOUNT') }}"
+azure_storage_sas_token: "{{ lookup('env', 'AZURE_STORAGE_SAS_TOKEN') }}"
+
+# USMT configuration
+usmt_path: "C:\\USMT"
+usmt_backup_path: "C:\\USMTBackup"
+usmt_config_files:
+  - MigApp.xml
+  - MigDocs.xml
+  - MigUser.xml
+
+# Backup options
+upload_to_azure: true
+cleanup_local_backup: false
+compress_backup: true
+encrypt_backup: false
+
+# Database
+postgres_host: "{{ lookup('env', 'POSTGRES_HOST') }}"
+api_token: "{{ lookup('env', 'API_TOKEN') }}"
+

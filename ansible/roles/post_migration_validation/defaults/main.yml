@@ -1,0 +1,30 @@
+---
+# Default variables for post_migration_validation role
+
+# Migration batch information
+migration_batch_id: "{{ lookup('env', 'MIGRATION_BATCH_ID') | default('batch_001', true) }}"
+migrated_users: []
+migrated_computers: []
+migrated_groups: []
+
+# Validation options
+verify_sid_history: true
+perform_auth_test: false
+test_network_connectivity: false
+
+# Test credentials (if performing auth test)
+test_username: ""
+test_password: ""
+
+# Domain information
+target_dc_fqdn: "dc1.target.corp.local"
+target_domain_fqdn: "target.corp.local"
+
+# Output
+validation_output_dir: "/opt/ansible/data/validation"
+validation_status: "pending"
+
+# Database
+postgres_host: "{{ lookup('env', 'POSTGRES_HOST') }}"
+api_token: "{{ lookup('env', 'API_TOKEN') }}"
+

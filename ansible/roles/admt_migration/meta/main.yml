@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: admt_migration
+  author: Auto Domain Migration Project
+  description: Executes ADMT migration operations for users, computers, and groups
+  license: MIT
+  min_ansible_version: '2.12'
+  platforms:
+    - name: Windows
+      versions:
+        - 2019
+        - 2022
+
+dependencies:
+  - role: admt_prerequisites
+

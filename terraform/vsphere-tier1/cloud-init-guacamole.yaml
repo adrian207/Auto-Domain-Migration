@@ -1,0 +1,124 @@
+#cloud-config
+# Apache Guacamole Bastion Host Setup (vSphere)
+# Author: Adrian Johnson <adrian207@gmail.com>
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - nginx
+  - postgresql-client
+  - python3-pip
+  - jq
+  - open-vm-tools
+
+write_files:
+  - path: /opt/guacamole/docker-compose.yml
+    content: |
+      version: '3'
+      services:
+        guacd:
+          image: guacamole/guacd:latest
+          container_name: guacd
+          restart: unless-stopped
+          networks:
+            - guacamole_net
+
+        guacamole:
+          image: guacamole/guacamole:latest
+          container_name: guacamole
+          restart: unless-stopped
+          environment:
+            GUACD_HOSTNAME: guacd
+            POSTGRES_HOSTNAME: ${postgres_host}
+            POSTGRES_DATABASE: ${postgres_db}
+            POSTGRES_USER: ${postgres_user}
+            POSTGRES_PASSWORD: ${postgres_password}
+          ports:
+            - "8080:8080"
+          networks:
+            - guacamole_net
+          depends_on:
+            - guacd
+
+      networks:
+        guacamole_net:
+          driver: bridge
+
+  - path: /etc/nginx/sites-available/guacamole
+    content: |
+      server {
+          listen 80;
+          listen [::]:80;
+          server_name _;
+          return 301 https://$$host$$request_uri;
+      }
+
+      server {
+          listen 443 ssl http2;
+          listen [::]:443 ssl http2;
+          server_name _;
+
+          ssl_certificate /etc/nginx/ssl/cert.pem;
+          ssl_certificate_key /etc/nginx/ssl/key.pem;
+          ssl_protocols TLSv1.2 TLSv1.3;
+          ssl_ciphers HIGH:!aNULL:!MD5;
+
+          location / {
+              proxy_pass http://localhost:8080/guacamole/;
+              proxy_buffering off;
+              proxy_http_version 1.1;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header Upgrade $$http_upgrade;
+              proxy_set_header Connection $$http_connection;
+              proxy_cookie_path /guacamole/ /;
+              access_log off;
+          }
+      }
+
+  - path: /usr/local/bin/init-guacamole-db.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Initialize Guacamole database schema
+
+      echo "Waiting for PostgreSQL to be ready..."
+      until PGPASSWORD="${postgres_password}" psql -h "${postgres_host}" -U "${postgres_user}" -d "${postgres_db}" -c '\q' 2>/dev/null; do
+          sleep 5
+      done
+
+      echo "PostgreSQL is ready. Initializing Guacamole schema..."
+      
+      docker run --rm guacamole/guacamole /opt/guacamole/bin/initdb.sh --postgres | \
+          PGPASSWORD="${postgres_password}" psql -h "${postgres_host}" -U "${postgres_user}" -d "${postgres_db}"
+
+      echo "Guacamole database initialized!"
+
+runcmd:
+  # Enable and start open-vm-tools
+  - systemctl enable open-vm-tools
+  - systemctl start open-vm-tools
+  
+  # Generate self-signed SSL certificate
+  - mkdir -p /etc/nginx/ssl
+  - openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/key.pem -out /etc/nginx/ssl/cert.pem -subj "/C=US/ST=State/L=City/O=Organization/CN=guacamole"
+  
+  # Configure Nginx
+  - rm -f /etc/nginx/sites-enabled/default
+  - ln -sf /etc/nginx/sites-available/guacamole /etc/nginx/sites-enabled/
+  - systemctl restart nginx
+  - systemctl enable nginx
+  
+  # Initialize Guacamole database
+  - sleep 30
+  - /usr/local/bin/init-guacamole-db.sh
+  
+  # Start Guacamole containers
+  - cd /opt/guacamole
+  - docker-compose up -d
+
+final_message: "Guacamole bastion host is ready! Access at https://${postgres_host}/"
+
+

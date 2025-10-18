@@ -1,0 +1,161 @@
+---
+# Role: usmt_backup
+# Purpose: Backup user state using USMT (User State Migration Tool)
+# Target: Source workstations
+
+- name: Backup user state with USMT
+  block:
+    - name: Check if USMT is installed
+      ansible.windows.win_stat:
+        path: "C:\\USMT\\scanstate.exe"
+      register: usmt_installed
+
+    - name: Download USMT from Azure Storage
+      ansible.windows.win_shell: |
+        $StorageAccount = "{{ azure_storage_account }}"
+        $Container = "migration-artifacts"
+        $SasToken = "{{ azure_storage_sas_token }}"
+        $BlobName = "USMT.zip"
+        $LocalPath = "C:\Temp\USMT.zip"
+        
+        $uri = "https://$StorageAccount.blob.core.windows.net/$Container/$BlobName$SasToken"
+        
+        New-Item -Path C:\Temp -ItemType Directory -Force | Out-Null
+        Invoke-WebRequest -Uri $uri -OutFile $LocalPath -UseBasicParsing
+        
+        # Extract USMT
+        Expand-Archive -Path $LocalPath -DestinationPath C:\USMT -Force
+        
+        Write-Output "USMT downloaded and extracted"
+      when: not usmt_installed.stat.exists
+
+    - name: Create USMT backup directory on local machine
+      ansible.windows.win_file:
+        path: "C:\\USMTBackup\\{{ inventory_hostname }}"
+        state: directory
+
+    - name: Get list of user profiles to backup
+      ansible.windows.win_shell: |
+        $profiles = Get-WmiObject -Class Win32_UserProfile | Where-Object {
+            -not $_.Special -and 
+            $_.LocalPath -notlike "*Windows*" -and
+            $_.LocalPath -notlike "*Default*" -and
+            $_.LocalPath -notlike "*Public*"
+        }
+        
+        $usernames = $profiles | For-each-Object {
+            $sid = $_.SID
+            $username = (New-Object System.Security.Principal.SecurityIdentifier($sid)).Translate([System.Security.Principal.NTAccount]).Value
+            $username
+        }
+        
+        $usernames -join ','
+      register: user_profiles
+
+    - name: Display profiles to backup
+      ansible.builtin.debug:
+        msg: "Backing up profiles: {{ user_profiles.stdout }}"
+
+    - name: Run USMT ScanState
+      ansible.windows.win_shell: |
+        $BackupPath = "C:\USMTBackup\{{ inventory_hostname }}"
+        $LogPath = "$BackupPath\scanstate.log"
+        
+        # Run ScanState
+        $process = Start-Process -FilePath "C:\USMT\scanstate.exe" -ArgumentList `
+            "$BackupPath",
+            "/i:C:\USMT\MigApp.xml",
+            "/i:C:\USMT\MigDocs.xml",
+            "/i:C:\USMT\MigUser.xml",
+            "/v:13",
+            "/l:$LogPath",
+            "/progress:$BackupPath\progress.log",
+            "/c",
+            "/o",
+            "/efs:copyraw" `
+            -Wait -NoNewWindow -PassThru
+        
+        if ($process.ExitCode -eq 0) {
+            Write-Output "USMT backup completed successfully"
+        } else {
+            Write-Error "USMT backup failed with exit code: $($process.ExitCode)"
+            exit $process.ExitCode
+        }
+      register: usmt_scanstate
+      async: 3600  # 1 hour timeout
+      poll: 30
+
+    - name: Upload USMT backup to Azure Storage
+      ansible.windows.win_shell: |
+        $StorageAccount = "{{ azure_storage_account }}"
+        $Container = "usmt-backups"
+        $SasToken = "{{ azure_storage_sas_token }}"
+        $LocalPath = "C:\USMTBackup\{{ inventory_hostname }}"
+        
+        # Install AzCopy if not present
+        if (-not (Test-Path "C:\AzCopy\azcopy.exe")) {
+            $azCopyZip = "C:\Temp\azcopy.zip"
+            Invoke-WebRequest -Uri "https://aka.ms/downloadazcopy-v10-windows" -OutFile $azCopyZip
+            Expand-Archive -Path $azCopyZip -DestinationPath C:\AzCopy -Force
+            
+            # Find azcopy.exe and move to root
+            $azCopyExe = Get-ChildItem -Path C:\AzCopy -Recurse -Filter "azcopy.exe" | Select-Object -First 1
+            Move-Item -Path $azCopyExe.FullName -Destination "C:\AzCopy\azcopy.exe" -Force
+        }
+        
+        # Upload using AzCopy
+        $destUrl = "https://$StorageAccount.blob.core.windows.net/$Container/{{ inventory_hostname }}$SasToken"
+        
+        & "C:\AzCopy\azcopy.exe" copy $LocalPath $destUrl --recursive=true
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Output "Backup uploaded successfully to Azure"
+        } else {
+            Write-Error "Failed to upload backup: exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+        }
+      register: usmt_upload
+      when: upload_to_azure | default(true)
+
+    - name: Update migration state database
+      ansible.builtin.uri:
+        url: "https://{{ postgres_host }}/api/usmt/backup"
+        method: POST
+        body_format: json
+        body:
+          computer_name: "{{ inventory_hostname }}"
+          backup_path: "usmt-backups/{{ inventory_hostname }}"
+          backup_size_mb: "{{ (usmt_scanstate.stdout | regex_search('([0-9]+) MB') | default('0') }}"
+          status: "completed"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          user_profiles: "{{ user_profiles.stdout.split(',') }}"
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+      delegate_to: localhost
+
+    - name: Clean up local USMT backup (optional)
+      ansible.windows.win_file:
+        path: "C:\\USMTBackup\\{{ inventory_hostname }}"
+        state: absent
+      when: cleanup_local_backup | default(false)
+
+  rescue:
+    - name: Handle USMT backup failure
+      ansible.builtin.debug:
+        msg: "USMT backup failed for {{ inventory_hostname }}"
+
+    - name: Update state database with failure
+      ansible.builtin.uri:
+        url: "https://{{ postgres_host }}/api/usmt/backup"
+        method: POST
+        body_format: json
+        body:
+          computer_name: "{{ inventory_hostname }}"
+          status: "failed"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          error: "{{ ansible_failed_result.msg | default('Unknown error') }}"
+
+  tags:
+    - usmt
+    - backup
+

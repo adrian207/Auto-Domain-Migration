@@ -1,0 +1,70 @@
+---
+# Task: Install ADMT on target domain controller
+# Note: ADMT installer must be provided by user or downloaded
+# This task handles installation from Azure Blob Storage
+
+- name: Install ADMT on target domain controller
+  block:
+    - name: Check if ADMT installer exists locally
+      ansible.windows.win_stat:
+        path: C:\ADMT\admtsetup.exe
+      register: admt_installer
+
+    - name: Download ADMT installer from Azure Storage
+      ansible.windows.win_shell: |
+        $StorageAccount = "{{ azure_storage_account }}"
+        $Container = "migration-artifacts"
+        $SasToken = "{{ azure_storage_sas_token }}"
+        $BlobName = "admtsetup.exe"
+        $LocalPath = "C:\ADMT\admtsetup.exe"
+        
+        $uri = "https://$StorageAccount.blob.core.windows.net/$Container/$BlobName$SasToken"
+        
+        try {
+            Invoke-WebRequest -Uri $uri -OutFile $LocalPath -UseBasicParsing
+            Write-Output "Downloaded ADMT installer successfully"
+        } catch {
+            Write-Error "Failed to download ADMT: $_"
+            exit 1
+        }
+      when: not admt_installer.stat.exists
+      no_log: false  # Set to true in production to hide SAS token
+
+    - name: Verify ADMT installer
+      ansible.windows.win_stat:
+        path: C:\ADMT\admtsetup.exe
+      register: admt_installer_verify
+      failed_when: not admt_installer_verify.stat.exists
+
+    - name: Install ADMT
+      ansible.windows.win_package:
+        path: C:\ADMT\admtsetup.exe
+        # Note: ADMT 3.2 uses MSI, which auto-detects product ID
+        # For manual specification, use: {8DA2F05A-B0F9-4DF1-BA62-C95FF3B4D8A5}
+        product_id: auto
+        arguments: /quiet /norestart
+        state: present
+        creates_path: "C:\\Program Files\\Active Directory Migration Tool\\ADMT.exe"
+      register: admt_installation
+
+    - name: Wait for ADMT installation to complete
+      ansible.builtin.pause:
+        seconds: 30
+      when: admt_installation.changed
+
+    - name: Verify ADMT installation
+      ansible.windows.win_stat:
+        path: "C:\\Program Files\\Active Directory Migration Tool\\ADMT.exe"
+      register: admt_verify
+      failed_when: not admt_verify.stat.exists
+
+    - name: Install Password Export Server (PES) if provided
+      ansible.windows.win_package:
+        path: C:\ADMT\pwdmig.msi
+        state: present
+        arguments: /quiet /norestart
+      when: install_pes | default(false)
+
+  tags:
+    - admt_install
+

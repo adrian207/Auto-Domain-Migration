@@ -1,0 +1,26 @@
+---
+# Default variables for discovery role
+
+# Discovery scope
+discovery_search_base: "DC=source,DC=corp,DC=local"
+discovery_exclude_ous:
+  - "OU=Service Accounts"
+  - "OU=System"
+  - "CN=Builtin"
+
+# Output directories
+discovery_output_dir: "/opt/ansible/data/discovery/{{ ansible_date_time.date }}"
+discovery_temp_dir: "C:\\ADMT\\Discovery"
+
+# Domain information
+source_domain_fqdn: "source.corp.local"
+
+# Database upload
+upload_to_database: true
+postgres_host: "{{ lookup('env', 'POSTGRES_HOST') }}"
+api_token: "{{ lookup('env', 'API_TOKEN') }}"
+
+# Filters
+min_user_logon_days: 90  # Only include users logged in within last 90 days
+include_disabled_accounts: false
+

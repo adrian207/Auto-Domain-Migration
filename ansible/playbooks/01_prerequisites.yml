@@ -1,0 +1,54 @@
+---
+# Playbook: 01_prerequisites.yml
+# Purpose: Setup ADMT prerequisites on target domain controller
+# Usage: ansible-playbook -i inventory/hosts.ini playbooks/01_prerequisites.yml
+
+- name: Prerequisites Phase - Setup ADMT Environment
+  hosts: domain_controllers
+  gather_facts: yes
+  serial: 1  # Process DCs one at a time
+  
+  tasks:
+    - name: Display prerequisites setup information
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Setting Up ADMT Prerequisites
+          ========================================
+          Target: {{ inventory_hostname }}
+          Domain Role: {{ domain_role | default('unknown') }}
+          ========================================
+
+    - name: Setup ADMT prerequisites
+      ansible.builtin.include_role:
+        name: admt_prerequisites
+      tags:
+        - prerequisites
+
+    - name: Install ADMT on target DC
+      ansible.builtin.include_role:
+        name: admt_prerequisites
+        tasks_from: install_admt
+      when: 
+        - domain_role == "target"
+        - install_admt | default(false)
+      tags:
+        - admt_install
+
+- name: Display setup completion
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Show next steps
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Prerequisites Setup Complete!
+          ========================================
+          
+          Next steps:
+          1. Verify ADMT installation on target DC
+          2. Run trust configuration playbook
+          ========================================
+

@@ -1,0 +1,66 @@
+---
+# Playbook: 03_usmt_backup.yml
+# Purpose: Backup user state using USMT before migration
+# Usage: ansible-playbook -i inventory/hosts.ini playbooks/03_usmt_backup.yml
+
+- name: USMT Backup Phase
+  hosts: workstations
+  gather_facts: yes
+  serial: 5  # Process 5 workstations at a time to manage load
+  
+  vars:
+    backup_start_time: "{{ ansible_date_time.epoch }}"
+  
+  pre_tasks:
+    - name: Display USMT backup information
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Starting USMT Backup
+          ========================================
+          Target: {{ inventory_hostname }}
+          Azure Storage: {{ azure_storage_account }}
+          ========================================
+
+  tasks:
+    - name: Perform USMT backup
+      ansible.builtin.include_role:
+        name: usmt_backup
+      tags:
+        - usmt
+        - backup
+
+  post_tasks:
+    - name: Calculate backup duration
+      ansible.builtin.set_fact:
+        backup_duration: "{{ ansible_date_time.epoch | int - backup_start_time | int }}"
+
+    - name: Display backup completion
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Backup Complete for {{ inventory_hostname }}
+          ========================================
+          Duration: {{ backup_duration }} seconds
+          ========================================
+
+- name: Generate backup summary report
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display overall backup summary
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          USMT Backup Phase Complete!
+          ========================================
+          
+          All workstation user states have been backed up to Azure Storage.
+          
+          Next steps:
+          1. Verify backups in Azure Storage Account
+          2. Review backup logs
+          3. Proceed with migration playbook
+          ========================================
+

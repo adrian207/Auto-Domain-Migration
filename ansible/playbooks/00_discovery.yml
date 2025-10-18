@@ -1,0 +1,44 @@
+---
+# Playbook: 00_discovery.yml
+# Purpose: Discover and inventory Active Directory objects for migration
+# Usage: ansible-playbook -i inventory/hosts.ini playbooks/00_discovery.yml
+
+- name: Discovery Phase - Inventory Active Directory Objects
+  hosts: source_dc
+  gather_facts: yes
+  
+  vars:
+    discovery_output_dir: "/opt/ansible/data/discovery/{{ ansible_date_time.date }}"
+  
+  tasks:
+    - name: Display discovery start information
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Starting AD Discovery
+          ========================================
+          Source Domain: {{ source_domain_fqdn }}
+          Search Base: {{ discovery_search_base }}
+          Output: {{ discovery_output_dir }}
+          ========================================
+
+    - name: Run discovery role
+      ansible.builtin.include_role:
+        name: discovery
+      tags:
+        - discovery
+
+    - name: Display discovery completion
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Discovery Complete!
+          ========================================
+          Results saved to: {{ discovery_output_dir }}
+          
+          Next steps:
+          1. Review discovery results
+          2. Plan migration waves
+          3. Run prerequisites playbook
+          ========================================
+

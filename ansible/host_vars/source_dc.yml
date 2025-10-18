@@ -1,0 +1,20 @@
+---
+# Host variables for source domain controller
+
+# Host identification
+hostname: "DC1-SOURCE"
+fqdn: "dc1.source.corp.local"
+ip_address: "10.0.1.10"
+
+# Domain role
+domain_role: "source"
+is_primary_dc: true
+
+# Discovery settings
+discovery_search_base: "DC=source,DC=corp,DC=local"
+discovery_exclude_ous:
+  - "OU=Service Accounts"
+  - "OU=System"
+  - "CN=Builtin"
+  - "CN=Managed Service Accounts"
+

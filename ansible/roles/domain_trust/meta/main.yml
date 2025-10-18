@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: domain_trust
+  author: Auto Domain Migration Project
+  description: Configures trust relationships between Active Directory domains
+  license: MIT
+  min_ansible_version: '2.12'
+  platforms:
+    - name: Windows
+      versions:
+        - 2019
+        - 2022
+
+dependencies: []
+

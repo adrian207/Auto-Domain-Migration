@@ -1,0 +1,69 @@
+---
+# Playbook: 02_trust_configuration.yml
+# Purpose: Configure trust relationship between source and target domains
+# Usage: ansible-playbook -i inventory/hosts.ini playbooks/02_trust_configuration.yml
+
+- name: Trust Configuration Phase
+  hosts: domain_controllers
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Verify trust password is set
+      ansible.builtin.fail:
+        msg: "Trust password must be set in environment variable TRUST_PASSWORD"
+      when: trust_password == ""
+      run_once: yes
+
+    - name: Display trust configuration information
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Configuring Domain Trust
+          ========================================
+          Source Domain: {{ source_domain_fqdn }}
+          Target Domain: {{ target_domain_fqdn }}
+          Trust Type: {{ trust_type }}
+          ========================================
+      run_once: yes
+
+  tasks:
+    - name: Configure domain trust
+      ansible.builtin.include_role:
+        name: domain_trust
+      tags:
+        - trust
+
+  post_tasks:
+    - name: Verify trust configuration
+      ansible.windows.win_shell: |
+        $TargetDomain = "{{ target_domain_fqdn if domain_role == 'source' else source_domain_fqdn }}"
+        try {
+            $trust = Get-ADTrust -Filter "Target -eq '$TargetDomain'" -ErrorAction Stop
+            if ($trust) {
+                Write-Output "Trust verified: $($trust.Direction)"
+            } else {
+                Write-Error "Trust not found"
+                exit 1
+            }
+        } catch {
+            Write-Error "Trust verification failed: $_"
+            exit 1
+        }
+      register: trust_verify
+      changed_when: false
+
+    - name: Display trust configuration completion
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Trust Configuration Complete!
+          ========================================
+          {{ trust_verify.stdout }}
+          
+          Next steps:
+          1. Test trust relationship manually if needed
+          2. Run USMT backup playbook (for workstations)
+          3. Run migration playbook
+          ========================================
+      run_once: yes
+

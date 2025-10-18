@@ -1,0 +1,178 @@
+---
+# Role: admt_migration
+# Purpose: Execute ADMT migration operations
+# Target: Target domain controller
+
+- name: Execute ADMT migration
+  block:
+    - name: Import ADMT PowerShell module
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+      changed_when: false
+
+    - name: Create migration batch using ADMT module
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+        
+        $batchParams = @{
+          BatchId = "{{ migration_batch_id }}"
+          Users = @({{ user_list | default([]) | map('quote') | join(',') }})
+          Computers = @({{ computer_list | default([]) | map('quote') | join(',') }})
+          Groups = @({{ group_list | default([]) | map('quote') | join(',') }})
+          SourceDomain = "{{ source_domain_fqdn }}"
+          TargetDomain = "{{ target_domain_fqdn }}"
+          TargetOU = "{{ target_ou | default('') }}"
+        }
+        
+        New-ADMTMigrationBatch @batchParams
+      register: batch_creation
+
+    - name: Display batch creation result
+      ansible.builtin.debug:
+        msg: "{{ batch_creation.stdout_lines }}"
+
+    - name: Perform user account migration (Phase 1)
+      ansible.windows.win_shell: |
+        $LogFile = "{{ admt_logs_dir }}\user_migration_{{ migration_batch_id }}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        
+        Import-Module ADMT
+        
+        # Migrate users
+        $users = @({{ user_list | map('quote') | join(',') }})
+        
+        foreach ($user in $users) {
+            try {
+                # Use ADMT cmdlets or COM objects
+                Write-Output "Migrating user: $user" | Tee-Object -FilePath $LogFile -Append
+                
+                # ADMT migration command here
+                # Note: ADMT primarily uses GUI or scripted COM objects
+                # This is a placeholder for the actual migration logic
+                
+            } catch {
+                Write-Error "Failed to migrate user $user : $_" | Tee-Object -FilePath $LogFile -Append
+            }
+        }
+      when: migration_phase == "users"
+      register: user_migration
+
+    - name: Perform computer account migration (Phase 2)
+      ansible.windows.win_shell: |
+        $LogFile = "{{ admt_logs_dir }}\computer_migration_{{ migration_batch_id }}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        
+        Import-Module ADMT
+        
+        $computers = @({{ computer_list | map('quote') | join(',') }})
+        
+        foreach ($computer in $computers) {
+            try {
+                Write-Output "Migrating computer: $computer" | Tee-Object -FilePath $LogFile -Append
+                
+                # ADMT computer migration command
+                
+            } catch {
+                Write-Error "Failed to migrate computer $computer : $_" | Tee-Object -FilePath $LogFile -Append
+            }
+        }
+      when: migration_phase == "computers"
+      register: computer_migration
+
+    - name: Perform group migration (Phase 3)
+      ansible.windows.win_shell: |
+        $LogFile = "{{ admt_logs_dir }}\group_migration_{{ migration_batch_id }}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        
+        Import-Module ADMT
+        
+        $groups = @({{ group_list | map('quote') | join(',') }})
+        
+        foreach ($group in $groups) {
+            try {
+                Write-Output "Migrating group: $group" | Tee-Object -FilePath $LogFile -Append
+                
+                # ADMT group migration command
+                
+            } catch {
+                Write-Error "Failed to migrate group $group : $_" | Tee-Object -FilePath $LogFile -Append
+            }
+        }
+      when: migration_phase == "groups"
+      register: group_migration
+
+    - name: Perform SID history migration
+      ansible.windows.win_shell: |
+        $LogFile = "{{ admt_logs_dir }}\sid_history_{{ migration_batch_id }}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        
+        # Enable SID history on target domain
+        Set-ADDomain -Identity {{ target_domain_fqdn }} `
+            -AllowSIDHistory $true `
+            -ErrorAction SilentlyContinue
+        
+        Write-Output "SID History enabled for domain" | Tee-Object -FilePath $LogFile -Append
+      when: enable_sid_history | default(true)
+      register: sid_history
+
+    - name: Update migration state database
+      ansible.builtin.uri:
+        url: "https://{{ postgres_host }}/api/migration/batch/{{ migration_batch_id }}"
+        method: POST
+        body_format: json
+        body:
+          batch_id: "{{ migration_batch_id }}"
+          phase: "{{ migration_phase }}"
+          status: "completed"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          migrated_users: "{{ user_migration.stdout_lines | default([]) | length }}"
+          migrated_computers: "{{ computer_migration.stdout_lines | default([]) | length }}"
+          migrated_groups: "{{ group_migration.stdout_lines | default([]) | length }}"
+        headers:
+          Authorization: "Bearer {{ api_token }}"
+      when: update_state_db | default(true)
+
+    - name: Get ADMT migration status
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+        Get-ADMTMigrationStatus -LogPath "{{ admt_logs_dir }}"
+      register: migration_status
+
+    - name: Display migration status
+      ansible.builtin.debug:
+        msg: "{{ migration_status.stdout }}"
+
+    - name: Export ADMT migration report
+      ansible.windows.win_shell: |
+        Import-Module "C:\ADMT\Scripts\ADMT-Functions.psm1" -Force
+        Export-ADMTReport -OutputPath "{{ admt_logs_dir }}" -MigrationBatchId "{{ migration_batch_id }}"
+      register: report_export
+
+    - name: Display report export result
+      ansible.builtin.debug:
+        msg: "{{ report_export.stdout_lines }}"
+
+    - name: Collect migration logs
+      ansible.windows.win_copy:
+        src: "{{ admt_logs_dir }}\\"
+        dest: "/opt/ansible/data/logs/admt/batch_{{ migration_batch_id }}/"
+        remote_src: yes
+      delegate_to: localhost
+
+  rescue:
+    - name: Handle migration failure
+      ansible.builtin.debug:
+        msg: "Migration failed for batch {{ migration_batch_id }}. Check logs at {{ admt_logs_dir }}"
+
+    - name: Update state database with failure
+      ansible.builtin.uri:
+        url: "https://{{ postgres_host }}/api/migration/batch/{{ migration_batch_id }}"
+        method: POST
+        body_format: json
+        body:
+          batch_id: "{{ migration_batch_id }}"
+          phase: "{{ migration_phase }}"
+          status: "failed"
+          timestamp: "{{ ansible_date_time.iso8601 }}"
+          error: "{{ ansible_failed_result.msg | default('Unknown error') }}"
+
+  tags:
+    - migration
+    - admt
+

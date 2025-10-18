@@ -1,0 +1,21 @@
+---
+# Host variables for target domain controller
+
+# Host identification
+hostname: "DC1-TARGET"
+fqdn: "dc1.target.corp.local"
+ip_address: "10.0.2.10"
+
+# Domain role
+domain_role: "target"
+is_primary_dc: true
+
+# ADMT settings
+install_admt: true
+install_pes: false  # Password Export Server (requires special licensing)
+
+# Migration target OU
+target_ou: "OU=Migrated Users,DC=target,DC=corp,DC=local"
+target_computer_ou: "OU=Migrated Computers,DC=target,DC=corp,DC=local"
+target_group_ou: "OU=Migrated Groups,DC=target,DC=corp,DC=local"
+

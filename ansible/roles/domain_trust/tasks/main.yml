@@ -1,0 +1,151 @@
+---
+# Role: domain_trust
+# Purpose: Configure trust relationship between source and target domains
+# Target: Both domain controllers
+
+- name: Configure domain trust relationship
+  block:
+    - name: Verify source domain reachability from target
+      ansible.windows.win_shell: |
+        Test-Connection -ComputerName {{ source_dc_fqdn }} -Count 2 -Quiet
+      register: source_reachable
+      when: "'target' in inventory_hostname"
+      failed_when: source_reachable.stdout_lines[0] == "False"
+
+    - name: Verify target domain reachability from source
+      ansible.windows.win_shell: |
+        Test-Connection -ComputerName {{ target_dc_fqdn }} -Count 2 -Quiet
+      register: target_reachable
+      when: "'source' in inventory_hostname"
+      failed_when: target_reachable.stdout_lines[0] == "False"
+
+    - name: Configure DNS conditional forwarders on target DC
+      ansible.windows.win_shell: |
+        $SourceDomain = "{{ source_domain_fqdn }}"
+        $SourceDC = "{{ source_dc_ip }}"
+        
+        # Check if forwarder already exists
+        $existing = Get-DnsServerZone -Name $SourceDomain -ErrorAction SilentlyContinue
+        
+        if (-not $existing) {
+            Add-DnsServerConditionalForwarderZone -Name $SourceDomain `
+                -MasterServers $SourceDC -ReplicationScope "Forest"
+            Write-Output "Created conditional forwarder for $SourceDomain"
+        } else {
+            Write-Output "Conditional forwarder already exists for $SourceDomain"
+        }
+      when: "'target' in inventory_hostname"
+      register: target_dns_config
+
+    - name: Configure DNS conditional forwarders on source DC
+      ansible.windows.win_shell: |
+        $TargetDomain = "{{ target_domain_fqdn }}"
+        $TargetDC = "{{ target_dc_ip }}"
+        
+        # Check if forwarder already exists
+        $existing = Get-DnsServerZone -Name $TargetDomain -ErrorAction SilentlyContinue
+        
+        if (-not $existing) {
+            Add-DnsServerConditionalForwarderZone -Name $TargetDomain `
+                -MasterServers $TargetDC -ReplicationScope "Forest"
+            Write-Output "Created conditional forwarder for $TargetDomain"
+        } else {
+            Write-Output "Conditional forwarder already exists for $TargetDomain"
+        }
+      when: "'source' in inventory_hostname"
+      register: source_dns_config
+
+    - name: Verify DNS resolution from target to source
+      ansible.windows.win_shell: |
+        Resolve-DnsName -Name {{ source_domain_fqdn }} -Type A -Server localhost
+      when: "'target' in inventory_hostname"
+      register: dns_test_target
+
+    - name: Verify DNS resolution from source to target
+      ansible.windows.win_shell: |
+        Resolve-DnsName -Name {{ target_domain_fqdn }} -Type A -Server localhost
+      when: "'source' in inventory_hostname"
+      register: dns_test_source
+
+    - name: Create trust from target to source (one-way)
+      ansible.windows.win_shell: |
+        $SourceDomain = "{{ source_domain_fqdn }}"
+        $TrustPassword = ConvertTo-SecureString "{{ trust_password }}" -AsPlainText -Force
+        
+        # Check if trust already exists
+        $existingTrust = Get-ADTrust -Filter "Target -eq '$SourceDomain'" -ErrorAction SilentlyContinue
+        
+        if (-not $existingTrust) {
+            New-ADTrust -Name $SourceDomain `
+                -Direction Inbound `
+                -Type Forest `
+                -TrustPassword $TrustPassword `
+                -Confirm:$false
+            
+            Write-Output "Trust created successfully"
+        } else {
+            Write-Output "Trust already exists"
+        }
+      when: 
+        - "'target' in inventory_hostname"
+        - trust_type == "one-way" or trust_type == "two-way"
+      no_log: true  # Hide trust password
+      register: trust_creation_target
+
+    - name: Create trust from source to target (for two-way trust)
+      ansible.windows.win_shell: |
+        $TargetDomain = "{{ target_domain_fqdn }}"
+        $TrustPassword = ConvertTo-SecureString "{{ trust_password }}" -AsPlainText -Force
+        
+        # Check if trust already exists
+        $existingTrust = Get-ADTrust -Filter "Target -eq '$TargetDomain'" -ErrorAction SilentlyContinue
+        
+        if (-not $existingTrust) {
+            New-ADTrust -Name $TargetDomain `
+                -Direction Outbound `
+                -Type Forest `
+                -TrustPassword $TrustPassword `
+                -Confirm:$false
+            
+            Write-Output "Trust created successfully"
+        } else {
+            Write-Output "Trust already exists"
+        }
+      when: 
+        - "'source' in inventory_hostname"
+        - trust_type == "two-way"
+      no_log: true
+      register: trust_creation_source
+
+    - name: Verify trust relationship from target
+      ansible.windows.win_shell: |
+        $SourceDomain = "{{ source_domain_fqdn }}"
+        Test-ADTrust -Identity $SourceDomain -ErrorAction Stop
+        Write-Output "Trust verified successfully"
+      when: "'target' in inventory_hostname"
+      register: trust_verification_target
+
+    - name: Verify trust relationship from source
+      ansible.windows.win_shell: |
+        $TargetDomain = "{{ target_domain_fqdn }}"
+        Test-ADTrust -Identity $TargetDomain -ErrorAction Stop
+        Write-Output "Trust verified successfully"
+      when: 
+        - "'source' in inventory_hostname"
+        - trust_type == "two-way"
+      register: trust_verification_source
+
+    - name: Display trust configuration summary
+      ansible.builtin.debug:
+        msg: |
+          Trust Configuration Complete:
+          - Type: {{ trust_type }}
+          - Source Domain: {{ source_domain_fqdn }}
+          - Target Domain: {{ target_domain_fqdn }}
+          - DNS Configured: Yes
+          - Trust Verified: Yes
+
+  tags:
+    - trust
+    - domain_trust
+
