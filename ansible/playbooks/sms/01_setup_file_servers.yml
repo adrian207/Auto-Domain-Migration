@@ -1,0 +1,53 @@
+# Setup File Servers for SMS Migration
+# Purpose: Configure source and target file servers
+
+---
+- name: Configure Source File Server
+  hosts: source_fileserver
+  gather_facts: yes
+  
+  tasks:
+    - name: Generate test data on source
+      win_shell: |
+        # Download and run test data generation script
+        $scriptPath = "C:\Temp\Generate-TestFileData.ps1"
+        New-Item -Path "C:\Temp" -ItemType Directory -Force
+        
+        # Script would be deployed via Ansible
+        & $scriptPath -OutputPath "D:\Shares" -CreateShares -SetPermissions
+      register: data_generation
+    
+    - name: Display generation results
+      debug:
+        msg: "{{ data_generation.stdout_lines }}"
+
+- name: Configure Target File Server with SMS
+  hosts: target_fileserver
+  gather_facts: yes
+  
+  tasks:
+    - name: Verify SMS service is running
+      win_service:
+        name: "Storage Migration Service"
+        state: started
+    
+    - name: Create shares directory structure
+      win_file:
+        path: "D:\Shares"
+        state: directory
+
+- name: Display completion message
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Show next steps
+      debug:
+        msg: |
+          File servers configured!
+          
+          Next steps:
+          1. Run SMS discovery: ansible-playbook sms/02_discover_shares.yml
+          2. Start migration: ansible-playbook sms/03_migrate_data.yml
+          3. Perform cutover: ansible-playbook sms/04_cutover.yml
+
