@@ -10,7 +10,7 @@
 
 resource "azurerm_windows_virtual_machine" "source_fileserver" {
   count               = var.use_vm_file_servers ? 1 : 0
-  name                = "${var.resource_prefix}-src-fs"
+  name                = "${local.resource_prefix}-src-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
@@ -22,7 +22,7 @@ resource "azurerm_windows_virtual_machine" "source_fileserver" {
   ]
 
   os_disk {
-    name                 = "${var.resource_prefix}-src-fs-osdisk"
+    name                 = "${local.resource_prefix}-src-fs-osdisk"
     caching              = "ReadWrite"
     storage_account_type = "Premium_LRS"
     disk_size_gb         = 256
@@ -44,7 +44,7 @@ resource "azurerm_windows_virtual_machine" "source_fileserver" {
 
 resource "azurerm_managed_disk" "source_fileserver_data" {
   count                = var.use_vm_file_servers ? 1 : 0
-  name                 = "${var.resource_prefix}-src-fs-data"
+  name                 = "${local.resource_prefix}-src-fs-data"
   location             = azurerm_resource_group.main.location
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
@@ -64,7 +64,7 @@ resource "azurerm_virtual_machine_data_disk_attachment" "source_fileserver_data"
 
 resource "azurerm_network_interface" "source_fileserver" {
   count               = var.use_vm_file_servers ? 1 : 0
-  name                = "${var.resource_prefix}-src-fs-nic"
+  name                = "${local.resource_prefix}-src-fs-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
@@ -81,7 +81,7 @@ resource "azurerm_network_interface" "source_fileserver" {
 # Target File Server
 resource "azurerm_windows_virtual_machine" "target_fileserver" {
   count               = var.use_vm_file_servers ? 1 : 0
-  name                = "${var.resource_prefix}-tgt-fs"
+  name                = "${local.resource_prefix}-tgt-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
@@ -93,7 +93,7 @@ resource "azurerm_windows_virtual_machine" "target_fileserver" {
   ]
 
   os_disk {
-    name                 = "${var.resource_prefix}-tgt-fs-osdisk"
+    name                 = "${local.resource_prefix}-tgt-fs-osdisk"
     caching              = "ReadWrite"
     storage_account_type = "Premium_LRS"
     disk_size_gb         = 256
@@ -115,7 +115,7 @@ resource "azurerm_windows_virtual_machine" "target_fileserver" {
 
 resource "azurerm_managed_disk" "target_fileserver_data" {
   count                = var.use_vm_file_servers ? 1 : 0
-  name                 = "${var.resource_prefix}-tgt-fs-data"
+  name                 = "${local.resource_prefix}-tgt-fs-data"
   location             = azurerm_resource_group.main.location
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
@@ -135,7 +135,7 @@ resource "azurerm_virtual_machine_data_disk_attachment" "target_fileserver_data"
 
 resource "azurerm_network_interface" "target_fileserver" {
   count               = var.use_vm_file_servers ? 1 : 0
-  name                = "${var.resource_prefix}-tgt-fs-nic"
+  name                = "${local.resource_prefix}-tgt-fs-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
@@ -155,7 +155,7 @@ resource "azurerm_network_interface" "target_fileserver" {
 
 resource "azurerm_storage_account" "file_storage" {
   count                    = var.use_vm_file_servers ? 0 : 1
-  name                     = "${var.resource_prefix}files"
+  name                     = "${replace(local.resource_prefix, "-", "")}files"
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Premium"
@@ -173,7 +173,7 @@ resource "azurerm_storage_account" "file_storage" {
 resource "azurerm_storage_share" "source_shares" {
   count                = var.use_vm_file_servers ? 0 : 3
   name                 = ["hr", "finance", "engineering"][count.index]
-  storage_account_name = azurerm_storage_account.file_storage[0].name
+  storage_account_id   = azurerm_storage_account.file_storage[0].id
   quota                = 500  # 500 GB per share
 
   enabled_protocol = "SMB"
@@ -182,7 +182,7 @@ resource "azurerm_storage_share" "source_shares" {
 resource "azurerm_storage_share" "target_shares" {
   count                = var.use_vm_file_servers ? 0 : 3
   name                 = "${["hr", "finance", "engineering"][count.index]}-target"
-  storage_account_name = azurerm_storage_account.file_storage[0].name
+  storage_account_id   = azurerm_storage_account.file_storage[0].id
   quota                = 500  # 500 GB per share
 
   enabled_protocol = "SMB"
@@ -191,13 +191,13 @@ resource "azurerm_storage_share" "target_shares" {
 # Private endpoint for Azure Files
 resource "azurerm_private_endpoint" "file_storage" {
   count               = var.use_vm_file_servers ? 0 : 1
-  name                = "${var.resource_prefix}-files-pe"
+  name                = "${local.resource_prefix}-files-pe"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   subnet_id           = azurerm_subnet.workstations.id
 
   private_service_connection {
-    name                           = "${var.resource_prefix}-files-psc"
+    name                           = "${local.resource_prefix}-files-psc"
     private_connection_resource_id = azurerm_storage_account.file_storage[0].id
     is_manual_connection           = false
     subresource_names              = ["file"]
@@ -211,7 +211,7 @@ resource "azurerm_private_endpoint" "file_storage" {
 # =============================================================================
 
 resource "azurerm_windows_virtual_machine" "sms_orchestrator" {
-  name                = "${var.resource_prefix}-sms-orch"
+  name                = "${local.resource_prefix}-sms-orch"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   size                = "Standard_D2s_v5"  # 2 vCPU, 8GB RAM
@@ -223,7 +223,7 @@ resource "azurerm_windows_virtual_machine" "sms_orchestrator" {
   ]
 
   os_disk {
-    name                 = "${var.resource_prefix}-sms-orch-osdisk"
+    name                 = "${local.resource_prefix}-sms-orch-osdisk"
     caching              = "ReadWrite"
     storage_account_type = "Premium_LRS"
     disk_size_gb         = 128
@@ -246,7 +246,7 @@ resource "azurerm_windows_virtual_machine" "sms_orchestrator" {
 }
 
 resource "azurerm_network_interface" "sms_orchestrator" {
-  name                = "${var.resource_prefix}-sms-orch-nic"
+  name                = "${local.resource_prefix}-sms-orch-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 

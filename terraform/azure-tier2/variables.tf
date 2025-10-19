@@ -476,4 +476,10 @@ variable "tags" {
   }
 }
 
+variable "use_vm_file_servers" {
+  description = "Use VM-based file servers (true) or Azure Files (false, recommended)"
+  type        = bool
+  default     = false
+}
+
 

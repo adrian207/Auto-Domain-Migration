@@ -29,7 +29,7 @@ resource "azurerm_storage_share" "department_shares" {
   for_each = toset(["hr", "finance", "engineering", "sales", "marketing", "it"])
   
   name                 = each.key
-  storage_account_name = azurerm_storage_account.file_sync_storage.name
+  storage_account_id   = azurerm_storage_account.file_sync_storage.id
   quota                = 2048  # 2TB per share
   enabled_protocol     = "SMB"
 }
@@ -322,7 +322,6 @@ resource "azurerm_lb_rule" "file_cluster_smb" {
   frontend_ip_configuration_name = "FilesClusterIP"
   backend_address_pool_ids       = [azurerm_lb_backend_address_pool.file_cluster[each.key].id]
   probe_id                       = azurerm_lb_probe.file_cluster[each.key].id
-  enable_floating_ip             = true
   idle_timeout_in_minutes        = 30
 }
 
