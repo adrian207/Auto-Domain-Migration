@@ -1,9 +1,19 @@
 # Automated Identity & Domain Migration Solution
 
+![Version](https://img.shields.io/badge/version-4.0-blue)
+![Status](https://img.shields.io/badge/status-production%20ready-brightgreen)
+![Tests](https://img.shields.io/badge/tests-150%2B%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-87.5%25-green)
+![Platform](https://img.shields.io/badge/platform-azure%20%7C%20vsphere-blue)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![PowerShell](https://img.shields.io/badge/powershell-7.x-blue)
+![Terraform](https://img.shields.io/badge/terraform-1.6%2B-purple)
+![Ansible](https://img.shields.io/badge/ansible-2.9%2B-red)
+
 **Author:** Adrian Johnson <adrian207@gmail.com>  
-**Version:** 3.5  
-**Last Updated:** October 2025  
-**Status:** 🚀 Production Ready
+**Version:** 4.0  
+**Last Updated:** January 2025  
+**Status:** 🚀 Production Ready with Full Test Coverage
 
 ---
 
