@@ -1,0 +1,381 @@
+# Prometheus Operator + Grafana Stack
+# Complete observability stack for Tier 3
+
+## Global settings
+nameOverride: ""
+fullnameOverride: ""
+
+## Prometheus Operator
+prometheusOperator:
+  enabled: true
+  
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+## Prometheus Server
+prometheus:
+  enabled: true
+  
+  prometheusSpec:
+    replicas: 2  # HA configuration
+    
+    ## Retention and storage
+    retention: 30d
+    retentionSize: "90GB"
+    
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-premium
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 100Gi
+    
+    ## Resources
+    resources:
+      requests:
+        cpu: 2000m
+        memory: 8Gi
+      limits:
+        cpu: 4000m
+        memory: 16Gi
+    
+    ## Service monitors
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    
+    ## Additional scrape configs
+    additionalScrapeConfigs:
+      - job_name: 'azure-metrics'
+        azure_sd_configs:
+          - subscription_id: 'YOUR_SUBSCRIPTION_ID'  # TODO: Update
+            tenant_id: 'YOUR_TENANT_ID'
+            client_id: 'YOUR_CLIENT_ID'
+            client_secret: 'YOUR_CLIENT_SECRET'
+            refresh_interval: 300s
+            port: 9100
+        
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+    
+    ## Alert manager configuration
+    alerting:
+      alertmanagers:
+        - namespace: monitoring
+          name: alertmanager-operated
+          port: web
+    
+    ## Pod anti-affinity
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - prometheus
+            topologyKey: kubernetes.io/hostname
+  
+  ## Ingress
+  ingress:
+    enabled: true
+    ingressClassName: azure-application-gateway
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - prometheus.yourdomain.com
+    tls:
+      - secretName: prometheus-tls
+        hosts:
+          - prometheus.yourdomain.com
+
+## Alertmanager
+alertmanager:
+  enabled: true
+  
+  alertmanagerSpec:
+    replicas: 3  # HA configuration
+    
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-premium
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    
+    ## Alert manager configuration
+    config:
+      global:
+        resolve_timeout: 5m
+        
+      route:
+        group_by: ['alertname', 'cluster', 'service']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 12h
+        receiver: 'default'
+        routes:
+          - match:
+              alertname: Watchdog
+            receiver: 'null'
+          - match:
+              severity: critical
+            receiver: 'critical'
+          - match:
+              severity: warning
+            receiver: 'warning'
+      
+      receivers:
+        - name: 'null'
+        - name: 'default'
+          webhook_configs:
+            - url: 'http://awx-service.automation:80/api/v2/job_templates/X/launch/'  # TODO: Configure
+              send_resolved: true
+        - name: 'critical'
+          email_configs:
+            - to: 'ops-team@yourdomain.com'  # TODO: Configure
+              from: 'alertmanager@yourdomain.com'
+              smarthost: 'smtp.yourdomain.com:587'
+              auth_username: 'alertmanager@yourdomain.com'
+              auth_password: 'YOUR_PASSWORD'  # TODO: Use Vault
+              headers:
+                Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+          webhook_configs:
+            - url: 'http://awx-service.automation:80/api/v2/job_templates/X/launch/'
+              send_resolved: true
+        - name: 'warning'
+          email_configs:
+            - to: 'ops-team@yourdomain.com'
+              from: 'alertmanager@yourdomain.com'
+              smarthost: 'smtp.yourdomain.com:587'
+              auth_username: 'alertmanager@yourdomain.com'
+              auth_password: 'YOUR_PASSWORD'  # TODO: Use Vault
+              headers:
+                Subject: '[WARNING] {{ .GroupLabels.alertname }}'
+  
+  ingress:
+    enabled: true
+    ingressClassName: azure-application-gateway
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - alertmanager.yourdomain.com
+    tls:
+      - secretName: alertmanager-tls
+        hosts:
+          - alertmanager.yourdomain.com
+
+## Grafana
+grafana:
+  enabled: true
+  
+  replicas: 2  # HA configuration
+  
+  ## Admin credentials
+  adminPassword: "ChangeThisPassword123!"  # TODO: Use Vault
+  
+  ## Resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  
+  ## Persistence
+  persistence:
+    enabled: true
+    storageClassName: managed-premium
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+  
+  ## Ingress
+  ingress:
+    enabled: true
+    ingressClassName: azure-application-gateway
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - grafana.yourdomain.com
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.yourdomain.com
+  
+  ## Datasources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://kube-prometheus-prometheus:9090
+          access: proxy
+          isDefault: true
+        - name: Loki
+          type: loki
+          url: http://loki-gateway.monitoring:80
+          access: proxy
+        - name: PostgreSQL
+          type: postgres
+          url: postgresql-postgresql-ha-pgpool.data:5432
+          database: awx
+          user: grafana
+          secureJsonData:
+            password: 'YOUR_PASSWORD'  # TODO: Use Vault
+  
+  ## Dashboard providers
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: 'migration'
+          orgId: 1
+          folder: 'AD Migration'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/migration
+  
+  ## Pre-configured dashboards
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249  # Kubernetes Cluster Monitoring
+        revision: 1
+        datasource: Prometheus
+      node-exporter:
+        gnetId: 1860  # Node Exporter Full
+        revision: 31
+        datasource: Prometheus
+      postgresql:
+        gnetId: 9628  # PostgreSQL Database
+        revision: 7
+        datasource: Prometheus
+    migration:
+      admt-overview:
+        url: https://raw.githubusercontent.com/yourusername/dashboards/main/admt-overview.json
+      file-migration:
+        url: https://raw.githubusercontent.com/yourusername/dashboards/main/file-migration.json
+
+## Node Exporter
+nodeExporter:
+  enabled: true
+
+## Kube State Metrics
+kubeStateMetrics:
+  enabled: true
+
+## Default rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    prometheus: true
+    prometheusOperator: true
+
+## Additional Prometheus Rules for AD Migration
+additionalPrometheusRulesMap:
+  admt-rules:
+    groups:
+      - name: admt-migration
+        interval: 30s
+        rules:
+          - alert: ADMTMigrationFailed
+            expr: increase(awx_job_failed_total{job_template="admt-migration"}[5m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "ADMT Migration job failed"
+              description: "Migration job {{ $labels.job_name }} has failed"
+          
+          - alert: HighMigrationErrorRate
+            expr: rate(awx_job_failed_total[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High migration error rate detected"
+              description: "Error rate is {{ $value }} per second"
+          
+          - alert: FileServerHighLatency
+            expr: minio_s3_requests_ttfb_seconds_distribution{quantile="0.95"} > 5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High latency on file server"
+              description: "95th percentile latency is {{ $value }} seconds"
+          
+          - alert: DatabaseConnectionPoolExhausted
+            expr: pg_stat_database_numbackends{datname="awx"} > 280
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Database connection pool near exhaustion"
+              description: "{{ $value }} connections active (max 300)"
+

@@ -1,0 +1,213 @@
+# MinIO HA Configuration
+# 6-node deployment with erasure coding (EC:4)
+
+mode: distributed  # Distributed mode for HA
+
+# 6 replicas for 4+2 erasure coding
+replicas: 6
+
+# Image configuration
+image:
+  repository: quay.io/minio/minio
+  tag: RELEASE.2024-01-16T16-07-38Z
+  pullPolicy: IfNotPresent
+
+## MinIO server configuration
+minioAPIPort: "9000"
+minioConsolePort: "9001"
+
+## Root credentials
+rootUser: "admin"
+rootPassword: "ChangeThisPassword123!"  # TODO: Use Vault
+
+## MinIO environment variables
+environment:
+  MINIO_BROWSER_REDIRECT_URL: https://minio-console.yourdomain.com
+  MINIO_SERVER_URL: https://minio-api.yourdomain.com
+  MINIO_PROMETHEUS_AUTH_TYPE: public
+  MINIO_PROMETHEUS_URL: http://kube-prometheus-prometheus.monitoring:9090
+  MINIO_PROMETHEUS_JOB_ID: minio-metrics
+
+## Resource requests and limits
+resources:
+  requests:
+    memory: 2Gi
+    cpu: 1000m
+  limits:
+    memory: 4Gi
+    cpu: 2000m
+
+## Persistence configuration
+persistence:
+  enabled: true
+  storageClass: managed-premium
+  accessMode: ReadWriteOnce
+  size: 100Gi  # 100GB per node = 600GB raw, ~400GB usable with EC
+  
+  ## Mount path
+  mountPath: /export
+
+## Pod anti-affinity (spread across nodes)
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app
+              operator: In
+              values:
+                - minio
+        topologyKey: kubernetes.io/hostname
+
+## Services
+service:
+  type: ClusterIP
+  port: 9000
+  
+consoleService:
+  type: ClusterIP
+  port: 9001
+
+## Ingress configuration for API
+ingress:
+  enabled: true
+  ingressClassName: azure-application-gateway
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+    appgw.ingress.kubernetes.io/connection-draining: "true"
+    appgw.ingress.kubernetes.io/connection-draining-timeout: "30"
+  hosts:
+    - minio-api.yourdomain.com
+  tls:
+    - secretName: minio-api-tls
+      hosts:
+        - minio-api.yourdomain.com
+
+## Ingress for Console UI
+consoleIngress:
+  enabled: true
+  ingressClassName: azure-application-gateway
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    appgw.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - minio-console.yourdomain.com
+  tls:
+    - secretName: minio-console-tls
+      hosts:
+        - minio-console.yourdomain.com
+
+## Network policies
+networkPolicy:
+  enabled: true
+  allowExternal: false
+
+## Security context
+securityContext:
+  enabled: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+## Default buckets to create
+buckets:
+  - name: admt-backups
+    policy: none  # Private
+    purge: false
+  - name: ansible-artifacts
+    policy: none
+    purge: false
+  - name: terraform-state
+    policy: none
+    purge: false
+  - name: migration-logs
+    policy: none
+    purge: false
+
+## Create default users
+users:
+  - accessKey: awx-user
+    secretKey: ChangeThisPassword123!  # TODO: Generate
+    policy: readwrite
+  - accessKey: backup-user
+    secretKey: ChangeThisPassword123!  # TODO: Generate
+    policy: readonly
+
+## MinIO policies
+policies:
+  - name: admt-admin
+    statements:
+      - resources:
+          - 'arn:aws:s3:::admt-*'
+        actions:
+          - "s3:*"
+  - name: migration-write
+    statements:
+      - resources:
+          - 'arn:aws:s3:::migration-logs/*'
+        actions:
+          - "s3:PutObject"
+          - "s3:GetObject"
+          - "s3:DeleteObject"
+
+## Service monitors for Prometheus
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    public: true
+    labels:
+      prometheus: kube-prometheus
+
+## Lifecycle policies
+lifecycle:
+  - id: expire-old-backups
+    status: Enabled
+    prefix: backups/
+    expiration:
+      days: 90
+  - id: transition-to-ia
+    status: Enabled
+    prefix: archives/
+    transition:
+      days: 30
+      storageClass: STANDARD_IA
+
+## Server-side encryption
+sse:
+  enabled: true
+  type: sse-s3
+
+## Monitoring
+## MinIO console metrics endpoint
+console:
+  enabled: true
+
+## Initialize job to create buckets and users
+makeUserJob:
+  securityContext:
+    enabled: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+
+## Update strategy
+DeploymentUpdate:
+  type: RollingUpdate
+  maxUnavailable: 0
+  maxSurge: 100%
+
+## Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+

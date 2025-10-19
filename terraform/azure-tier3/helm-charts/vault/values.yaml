@@ -1,0 +1,160 @@
+# HashiCorp Vault HA Configuration
+# High-availability deployment with Raft storage
+
+global:
+  enabled: true
+  tlsDisable: false  # Enable TLS
+
+injector:
+  enabled: true
+  replicas: 2
+  
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+
+server:
+  enabled: true
+  
+  # Enterprise license (optional)
+  # enterpriseLicense:
+  #   secretName: vault-license
+  
+  image:
+    repository: hashicorp/vault
+    tag: "1.15.4"
+    pullPolicy: IfNotPresent
+  
+  # Run Vault in HA mode with Raft
+  ha:
+    enabled: true
+    replicas: 3  # 3-node cluster for HA
+    
+    raft:
+      enabled: true
+      setNodeId: true
+      
+      config: |
+        ui = true
+        
+        listener "tcp" {
+          tls_disable = 0
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+          tls_key_file  = "/vault/userconfig/vault-tls/tls.key"
+          tls_client_ca_file = "/vault/userconfig/vault-tls/ca.crt"
+        }
+        
+        storage "raft" {
+          path = "/vault/data"
+          
+          retry_join {
+            leader_api_addr = "https://vault-0.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+          
+          retry_join {
+            leader_api_addr = "https://vault-1.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+          
+          retry_join {
+            leader_api_addr = "https://vault-2.vault-internal:8200"
+            leader_ca_cert_file = "/vault/userconfig/vault-tls/ca.crt"
+          }
+        }
+        
+        seal "azurekeyvault" {
+          tenant_id      = "YOUR_TENANT_ID"
+          vault_name     = "YOUR_KEYVAULT_NAME"
+          key_name       = "vault-unseal-key"
+        }
+        
+        service_registration "kubernetes" {}
+        
+        # Telemetry
+        telemetry {
+          prometheus_retention_time = "30s"
+          disable_hostname = true
+        }
+  
+  # Resources for Vault pods
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+  
+  # Persistent storage
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: managed-premium
+    accessMode: ReadWriteOnce
+  
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: managed-premium
+    accessMode: ReadWriteOnce
+  
+  # Affinity for pod spreading
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ template "vault.name" . }}
+              app.kubernetes.io/instance: "{{ .Release.Name }}"
+              component: server
+          topologyKey: kubernetes.io/hostname
+  
+  # Service configuration
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8200
+    targetPort: 8200
+    annotations: {}
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: azure-application-gateway
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      appgw.ingress.kubernetes.io/ssl-redirect: "true"
+      appgw.ingress.kubernetes.io/backend-protocol: "https"
+    hosts:
+      - host: vault.yourdomain.com
+        paths:
+          - /
+    tls:
+      - secretName: vault-tls
+        hosts:
+          - vault.yourdomain.com
+  
+  # ServiceMonitor for Prometheus
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+
+ui:
+  enabled: true
+  serviceType: ClusterIP
+  externalPort: 8200
+
+# ServerTelemetry
+serverTelemetry:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
