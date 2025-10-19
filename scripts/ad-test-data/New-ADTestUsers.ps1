@@ -10,7 +10,7 @@ param(
     [string]$DomainDN,
     
     [Parameter(Mandatory=$true)]
-    [string]$DefaultPassword
+    [SecureString]$DefaultPassword
 )
 
 # Import name data
@@ -53,8 +53,8 @@ $createdUsers = @{}  # Track created SAMAccountNames
 $totalCreated = 0
 $totalFailed = 0
 
-# Convert password to secure string
-$securePassword = ConvertTo-SecureString $DefaultPassword -AsPlainText -Force
+# Password is already SecureString
+$securePassword = $DefaultPassword
 
 # Extract domain name for email
 $domainName = ($DomainDN -split ',DC=' | Select-Object -Skip 1) -join '.'

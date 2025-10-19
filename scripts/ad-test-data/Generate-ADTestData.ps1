@@ -11,7 +11,7 @@ param(
     [string]$DomainDN,
     
     [Parameter(Mandatory=$false)]
-    [string]$DefaultPassword = "P@ssw0rd123!",
+    [SecureString]$DefaultPassword,
     
     [switch]$SkipOUs,
     [switch]$SkipUsers,
@@ -46,6 +46,11 @@ if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
 }
 
 Import-Module ActiveDirectory
+
+# Set default password if not provided
+if (-not $DefaultPassword) {
+    $DefaultPassword = ConvertTo-SecureString "P@ssw0rd123!" -AsPlainText -Force
+}
 
 $startTime = Get-Date
 
@@ -140,7 +145,7 @@ try {
     Write-Host "  Objects/minute: $(([math]::Round(($users + $computers + $groups) / $duration.TotalMinutes, 0)))"
     Write-Host ""
     Write-Host "Credentials:" -ForegroundColor Yellow
-    Write-Host "  Default Password: $DefaultPassword"
+    Write-Host "  Default Password: [SecureString]"
     Write-Host "  Sample User: john.smith@$(($DomainDN -split ',DC=')[1..(($DomainDN -split ',DC=').Count-1)] -join '.')"
     Write-Host ""
     
@@ -154,7 +159,6 @@ try {
         Users = $users
         Computers = $computers
         Groups = $groups
-        DefaultPassword = $DefaultPassword
     }
     
     $reportPath = "$scriptPath\generation-report-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
