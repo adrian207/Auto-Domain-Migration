@@ -1,0 +1,431 @@
+---
+# AWX Job Templates for Self-Healing Automation
+# These templates can be imported into AWX/Ansible Tower
+# They enable automated remediation triggered by Prometheus alerts
+
+job_templates:
+  # 1. Domain Controller Health Check & Restart
+  - name: "SelfHeal - Restart Domain Controller Service"
+    description: "Restarts Active Directory services on domain controllers"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/restart-dc-services.yml"
+    credentials:
+      - "Windows Domain Admin"
+    extra_vars:
+      target_dc: "{{ target_server }}"
+      service_name: "{{ service | default('NTDS') }}"
+    survey_enabled: true
+    survey_spec:
+      name: "Domain Controller Restart Parameters"
+      description: "Specify which DC and service to restart"
+      spec:
+        - question_name: "Target Server"
+          question_description: "FQDN of domain controller"
+          required: true
+          type: text
+          variable: target_server
+          default: "dc01.source.local"
+        - question_name: "Service Name"
+          question_description: "Service to restart"
+          required: true
+          type: multiplechoice
+          variable: service
+          choices:
+            - NTDS
+            - DNS
+            - Netlogon
+            - KDC
+          default: "NTDS"
+    verbosity: 1
+    timeout: 600
+    ask_variables_on_launch: true
+
+  # 2. Disk Space Cleanup
+  - name: "SelfHeal - Clean Disk Space"
+    description: "Automatically cleans temporary files and logs to free disk space"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/cleanup-disk-space.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_hosts: "{{ target_servers }}"
+      cleanup_threshold_gb: 10
+      cleanup_locations:
+        - "C:\\Windows\\Temp"
+        - "C:\\Temp"
+        - "C:\\ADMT\\Logs"
+        - "C:\\inetpub\\logs"
+    survey_enabled: true
+    survey_spec:
+      name: "Disk Cleanup Parameters"
+      description: "Configure disk cleanup options"
+      spec:
+        - question_name: "Target Servers"
+          question_description: "Servers to clean (comma-separated)"
+          required: true
+          type: text
+          variable: target_servers
+        - question_name: "Minimum Space to Free (GB)"
+          question_description: "Stop cleanup after freeing this much space"
+          required: false
+          type: integer
+          variable: cleanup_threshold_gb
+          default: 10
+          min: 1
+          max: 100
+    verbosity: 1
+    timeout: 1800
+
+  # 3. Migration Job Retry
+  - name: "SelfHeal - Retry Failed Migration"
+    description: "Retries a failed ADMT migration job"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/retry-migration.yml"
+    credentials:
+      - "Windows Domain Admin"
+    extra_vars:
+      batch_id: "{{ migration_batch_id }}"
+      retry_count: "{{ retry_number | default(1) }}"
+      wait_before_retry: 300
+    survey_enabled: true
+    survey_spec:
+      name: "Migration Retry Parameters"
+      description: "Specify which migration to retry"
+      spec:
+        - question_name: "Migration Batch ID"
+          question_description: "ID of failed migration batch"
+          required: true
+          type: text
+          variable: migration_batch_id
+        - question_name: "Retry Number"
+          question_description: "Which retry attempt (1-3)"
+          required: false
+          type: integer
+          variable: retry_number
+          default: 1
+          min: 1
+          max: 3
+    verbosity: 2
+    timeout: 3600
+    ask_variables_on_launch: true
+
+  # 4. DNS Service Reset
+  - name: "SelfHeal - Reset DNS Service"
+    description: "Restarts DNS service and clears cache"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/reset-dns.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_hosts: "{{ dns_servers }}"
+      clear_cache: true
+      verify_resolution: true
+    survey_enabled: false
+    verbosity: 1
+    timeout: 300
+
+  # 5. Network Connectivity Reset
+  - name: "SelfHeal - Reset Network Connection"
+    description: "Resets network adapter and renews DHCP/DNS"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/reset-network.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_host: "{{ server }}"
+      adapter_name: "Ethernet"
+      renew_dhcp: true
+      register_dns: true
+    survey_enabled: true
+    survey_spec:
+      name: "Network Reset Parameters"
+      spec:
+        - question_name: "Target Server"
+          required: true
+          type: text
+          variable: server
+    verbosity: 1
+    timeout: 600
+
+  # 6. Database Connection Pool Reset
+  - name: "SelfHeal - Reset Database Connections"
+    description: "Resets PostgreSQL connection pool and restarts PgBouncer"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/reset-database-pool.yml"
+    credentials:
+      - "PostgreSQL Admin"
+    extra_vars:
+      db_host: "{{ database_server }}"
+      db_name: "awx"
+      reset_connections: true
+      restart_pgbouncer: true
+    survey_enabled: false
+    verbosity: 1
+    timeout: 300
+
+  # 7. File Server Share Repair
+  - name: "SelfHeal - Repair SMB Shares"
+    description: "Repairs SMB share permissions and restarts service"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/repair-smb-shares.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_fileserver: "{{ fileserver }}"
+      verify_permissions: true
+      restart_service: true
+    survey_enabled: true
+    survey_spec:
+      name: "File Server Repair Parameters"
+      spec:
+        - question_name: "File Server"
+          required: true
+          type: text
+          variable: fileserver
+    verbosity: 1
+    timeout: 600
+
+  # 8. Service Health Check
+  - name: "SelfHeal - Service Health Check & Restart"
+    description: "Checks service health and restarts if needed"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/service-health-check.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_hosts: "all"
+      services_to_check:
+        - W32Time
+        - WinRM
+        - EventLog
+      restart_if_stopped: true
+    survey_enabled: false
+    verbosity: 1
+    timeout: 900
+
+  # 9. AWX Self-Healing
+  - name: "SelfHeal - Restart AWX Services"
+    description: "Restarts AWX/Tower services on control nodes"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/restart-awx-services.yml"
+    credentials:
+      - "SSH Key"
+    extra_vars:
+      target_awx_nodes: "{{ awx_nodes | default('awx-control') }}"
+      services:
+        - awx-web
+        - awx-task
+        - nginx
+        - postgresql
+    survey_enabled: false
+    verbosity: 2
+    timeout: 600
+    skip_tags:
+      - database_restart  # Skip DB restart by default
+
+  # 10. Prometheus Target Reset
+  - name: "SelfHeal - Reset Prometheus Scrape Target"
+    description: "Reloads Prometheus config and resets failed scrape targets"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/reset-prometheus-target.yml"
+    credentials:
+      - "SSH Key"
+    extra_vars:
+      prometheus_host: "prometheus.monitoring.svc.cluster.local"
+      reload_config: true
+      clear_failed_targets: true
+    survey_enabled: false
+    verbosity: 1
+    timeout: 300
+
+  # 11. Certificate Renewal
+  - name: "SelfHeal - Renew Expiring Certificate"
+    description: "Automatically renews certificates close to expiration"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/renew-certificate.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_server: "{{ server }}"
+      cert_thumbprint: "{{ thumbprint }}"
+      cert_store: "LocalMachine\\My"
+      auto_bind: true
+    survey_enabled: true
+    survey_spec:
+      name: "Certificate Renewal Parameters"
+      spec:
+        - question_name: "Server"
+          required: true
+          type: text
+          variable: server
+        - question_name: "Certificate Thumbprint"
+          required: true
+          type: text
+          variable: thumbprint
+    verbosity: 1
+    timeout: 600
+
+  # 12. Storage Capacity Emergency Cleanup
+  - name: "SelfHeal - Emergency Storage Cleanup"
+    description: "Aggressive cleanup when storage is critically low"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/emergency-storage-cleanup.yml"
+    credentials:
+      - "Windows Admin"
+    extra_vars:
+      target_host: "{{ server }}"
+      delete_old_logs: true
+      compress_archives: true
+      delete_temp_files: true
+      cleanup_windows_update: true
+      minimum_free_gb: 20
+    survey_enabled: false
+    verbosity: 2
+    timeout: 1800
+    ask_limit_on_launch: true
+
+  # 13. Replication Lag Fix
+  - name: "SelfHeal - Fix Domain Replication Lag"
+    description: "Forces AD replication and verifies synchronization"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/fix-replication-lag.yml"
+    credentials:
+      - "Windows Domain Admin"
+    extra_vars:
+      source_dc: "{{ source_domain_controller }}"
+      target_dc: "{{ target_domain_controller }}"
+      force_replication: true
+      verify_sync: true
+    survey_enabled: true
+    survey_spec:
+      name: "Replication Fix Parameters"
+      spec:
+        - question_name: "Source DC"
+          required: true
+          type: text
+          variable: source_domain_controller
+        - question_name: "Target DC"
+          required: true
+          type: text
+          variable: target_domain_controller
+    verbosity: 2
+    timeout: 900
+
+  # 14. Pod Restart (Kubernetes)
+  - name: "SelfHeal - Restart Failed Pods"
+    description: "Restarts crashed or failed pods in Kubernetes"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/restart-failed-pods.yml"
+    credentials:
+      - "Kubernetes Service Account"
+    extra_vars:
+      namespace: "{{ k8s_namespace | default('default') }}"
+      pod_selector: "{{ pod_label }}"
+      restart_method: "delete"  # or "rollout"
+    survey_enabled: true
+    survey_spec:
+      name: "Pod Restart Parameters"
+      spec:
+        - question_name: "Namespace"
+          required: false
+          type: text
+          variable: k8s_namespace
+          default: "default"
+        - question_name: "Pod Label Selector"
+          required: true
+          type: text
+          variable: pod_label
+          default: "app=awx-web"
+    verbosity: 1
+    timeout: 300
+
+  # 15. Vault Unseal
+  - name: "SelfHeal - Auto-Unseal Vault"
+    description: "Automatically unseals HashiCorp Vault"
+    job_type: run
+    inventory: "ADMT Infrastructure"
+    project: "Auto Domain Migration"
+    playbook: "selfhealing/unseal-vault.yml"
+    credentials:
+      - "Vault Unseal Keys"
+    extra_vars:
+      vault_addr: "https://vault.vault.svc.cluster.local:8200"
+      unseal_keys_count: 3
+      verify_sealed_status: true
+    survey_enabled: false
+    verbosity: 1
+    timeout: 300
+    ask_credential_on_launch: true
+
+# Workflow Templates (chains of jobs)
+workflow_templates:
+  - name: "SelfHeal - Complete Infrastructure Recovery"
+    description: "Full recovery workflow for major outage"
+    organization: "ADMT"
+    workflow_nodes:
+      - identifier: "check_dc"
+        unified_job_template: "SelfHeal - Service Health Check & Restart"
+        success_nodes:
+          - "check_dns"
+      - identifier: "check_dns"
+        unified_job_template: "SelfHeal - Reset DNS Service"
+        success_nodes:
+          - "check_network"
+      - identifier: "check_network"
+        unified_job_template: "SelfHeal - Reset Network Connection"
+        success_nodes:
+          - "verify_replication"
+      - identifier: "verify_replication"
+        unified_job_template: "SelfHeal - Fix Domain Replication Lag"
+        success_nodes:
+          - "cleanup"
+      - identifier: "cleanup"
+        unified_job_template: "SelfHeal - Clean Disk Space"
+
+  - name: "SelfHeal - Migration Job Recovery"
+    description: "Recovers from failed migration job"
+    organization: "ADMT"
+    workflow_nodes:
+      - identifier: "verify_dc"
+        unified_job_template: "SelfHeal - Service Health Check & Restart"
+        success_nodes:
+          - "verify_connectivity"
+      - identifier: "verify_connectivity"
+        unified_job_template: "SelfHeal - Reset Network Connection"
+        success_nodes:
+          - "retry_migration"
+      - identifier: "retry_migration"
+        unified_job_template: "SelfHeal - Retry Failed Migration"
+        failure_nodes:
+          - "alert_admin"
+      - identifier: "alert_admin"
+        unified_job_template: "Notify - Send Alert Email"
+

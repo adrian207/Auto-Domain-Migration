@@ -1,0 +1,150 @@
+---
+- name: Self-Healing - Cleanup Disk Space
+  hosts: "{{ target_hosts | default('all') }}"
+  gather_facts: yes
+  
+  vars:
+    cleanup_threshold_gb: 10
+    cleanup_locations:
+      - "C:\\Windows\\Temp"
+      - "C:\\Temp"
+      - "C:\\ADMT\\Logs"
+      - "C:\\inetpub\\logs"
+      - "C:\\Windows\\Logs"
+    
+  tasks:
+    - name: Display remediation information
+      debug:
+        msg:
+          - "🧹 Self-Healing Action: Disk Space Cleanup"
+          - "Target: {{ inventory_hostname }}"
+          - "Threshold: {{ cleanup_threshold_gb }} GB"
+          - "Triggered by: {{ alert_name | default('Manual') }}"
+    
+    - name: Get disk space before cleanup
+      win_shell: |
+        $drive = Get-PSDrive C
+        [PSCustomObject]@{
+          FreeSpaceGB = [math]::Round($drive.Free / 1GB, 2)
+          UsedSpaceGB = [math]::Round($drive.Used / 1GB, 2)
+          TotalSpaceGB = [math]::Round(($drive.Free + $drive.Used) / 1GB, 2)
+          PercentFree = [math]::Round(($drive.Free / ($drive.Free + $drive.Used)) * 100, 2)
+        } | ConvertTo-Json
+      register: disk_before
+      changed_when: false
+    
+    - name: Parse disk info
+      set_fact:
+        disk_info_before: "{{ disk_before.stdout | from_json }}"
+    
+    - name: Log current disk space
+      debug:
+        msg:
+          - "Free Space: {{ disk_info_before.FreeSpaceGB }} GB ({{ disk_info_before.PercentFree }}%)"
+          - "Used Space: {{ disk_info_before.UsedSpaceGB }} GB"
+    
+    - name: Clean temporary files
+      win_shell: |
+        $totalFreed = 0
+        
+        $locations = @(
+          {% for location in cleanup_locations %}
+          "{{ location }}"{{ "," if not loop.last else "" }}
+          {% endfor %}
+        )
+        
+        foreach ($location in $locations) {
+          if (Test-Path $location) {
+            Write-Host "Cleaning: $location"
+            $before = (Get-ChildItem $location -Recurse -File -ErrorAction SilentlyContinue | 
+                      Measure-Object -Property Length -Sum).Sum
+            
+            # Delete files older than 7 days
+            Get-ChildItem $location -Recurse -File -ErrorAction SilentlyContinue | 
+              Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | 
+              Remove-Item -Force -ErrorAction SilentlyContinue
+            
+            $after = (Get-ChildItem $location -Recurse -File -ErrorAction SilentlyContinue | 
+                     Measure-Object -Property Length -Sum).Sum
+            
+            if ($before -and $after) {
+              $freed = ($before - $after) / 1GB
+              $totalFreed += $freed
+              Write-Host "  Freed: $([math]::Round($freed, 2)) GB"
+            }
+          }
+        }
+        
+        Write-Output "Total freed: $([math]::Round($totalFreed, 2)) GB"
+        $totalFreed
+      register: cleanup_result
+      changed_when: cleanup_result.stdout_lines[-1] | float > 0
+    
+    - name: Clear Windows Update cache (if needed)
+      win_shell: |
+        $wuCache = "C:\\Windows\\SoftwareDistribution\\Download"
+        if (Test-Path $wuCache) {
+          Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue
+          $before = (Get-ChildItem $wuCache -Recurse -File | Measure-Object -Property Length -Sum).Sum
+          Remove-Item "$wuCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
+          Start-Service -Name wuauserv -ErrorAction SilentlyContinue
+          $after = (Get-ChildItem $wuCache -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+          if ($before) {
+            $freed = ($before - ($after ? $after : 0)) / 1GB
+            Write-Output "Windows Update cache freed: $([math]::Round($freed, 2)) GB"
+            $freed
+          } else {
+            0
+          }
+        } else {
+          0
+        }
+      register: wu_cleanup
+      when: disk_info_before.FreeSpaceGB | float < cleanup_threshold_gb | float
+      changed_when: wu_cleanup.stdout_lines[-1] | float > 0
+    
+    - name: Get disk space after cleanup
+      win_shell: |
+        $drive = Get-PSDrive C
+        [PSCustomObject]@{
+          FreeSpaceGB = [math]::Round($drive.Free / 1GB, 2)
+          UsedSpaceGB = [math]::Round($drive.Used / 1GB, 2)
+          PercentFree = [math]::Round(($drive.Free / ($drive.Free + $drive.Used)) * 100, 2)
+        } | ConvertTo-Json
+      register: disk_after
+      changed_when: false
+    
+    - name: Parse disk info after
+      set_fact:
+        disk_info_after: "{{ disk_after.stdout | from_json }}"
+    
+    - name: Calculate space freed
+      set_fact:
+        space_freed: "{{ disk_info_after.FreeSpaceGB | float - disk_info_before.FreeSpaceGB | float }}"
+    
+    - name: Log cleanup results
+      debug:
+        msg:
+          - "✅ Disk Cleanup Complete"
+          - "Space Freed: {{ space_freed }} GB"
+          - "Free Space Before: {{ disk_info_before.FreeSpaceGB }} GB"
+          - "Free Space After: {{ disk_info_after.FreeSpaceGB }} GB"
+          - "Percent Free: {{ disk_info_after.PercentFree }}%"
+    
+    - name: Send success notification
+      uri:
+        url: "{{ alertmanager_webhook_url }}"
+        method: POST
+        body_format: json
+        body:
+          - labels:
+              alertname: "DiskCleanup Success"
+              severity: "info"
+              instance: "{{ inventory_hostname }}"
+            annotations:
+              summary: "Disk cleanup freed {{ space_freed }} GB"
+              description: "Free space: {{ disk_info_after.FreeSpaceGB }} GB ({{ disk_info_after.PercentFree }}%)"
+        status_code: [200, 201]
+      when: alertmanager_webhook_url is defined
+      failed_when: false
+
