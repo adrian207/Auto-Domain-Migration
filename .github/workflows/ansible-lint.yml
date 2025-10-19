@@ -1,0 +1,293 @@
+name: Ansible Lint
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - develop
+    paths:
+      - 'ansible/**'
+      - '.github/workflows/ansible-lint.yml'
+  pull_request:
+    paths:
+      - 'ansible/**'
+      - '.github/workflows/ansible-lint.yml'
+  workflow_dispatch:
+
+jobs:
+  ansible-lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Ansible and ansible-lint
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible ansible-lint yamllint
+      
+      - name: Display versions
+        run: |
+          ansible --version
+          ansible-lint --version
+          yamllint --version
+      
+      - name: Run ansible-lint
+        run: |
+          cd ansible
+          ansible-lint --force-color --format=pep8 || true
+        continue-on-error: true
+      
+      - name: Run ansible-lint (strict)
+        id: lint
+        run: |
+          cd ansible
+          ansible-lint --force-color --format=pep8 > ../lint-results.txt 2>&1 || true
+          
+          if [ -s ../lint-results.txt ]; then
+            echo "## Ansible Lint Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat ../lint-results.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            
+            # Count errors and warnings
+            ERRORS=$(grep -c "ERROR" ../lint-results.txt || echo "0")
+            WARNINGS=$(grep -c "WARNING" ../lint-results.txt || echo "0")
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Errors: $ERRORS" >> $GITHUB_STEP_SUMMARY
+            echo "- Warnings: $WARNINGS" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$ERRORS" -gt "0" ]; then
+              echo "::error::Found $ERRORS ansible-lint error(s)"
+              exit 1
+            fi
+          else
+            echo "✅ No ansible-lint issues found!" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload lint results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: ansible-lint-results
+          path: lint-results.txt
+
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install yamllint
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+      
+      - name: Create yamllint config
+        run: |
+          cat > .yamllint.yml <<EOF
+          extends: default
+          
+          rules:
+            line-length:
+              max: 200
+              level: warning
+            indentation:
+              spaces: 2
+            comments:
+              min-spaces-from-content: 1
+            document-start: disable
+            truthy:
+              allowed-values: ['true', 'false', 'yes', 'no']
+          EOF
+      
+      - name: Run yamllint on Ansible files
+        run: |
+          yamllint -f parsable ansible/ > yamllint-results.txt 2>&1 || true
+          
+          if [ -s yamllint-results.txt ]; then
+            echo "## YAML Lint Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat yamllint-results.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            
+            # Only fail on errors, not warnings
+            if grep -q "error" yamllint-results.txt; then
+              echo "::error::YAML syntax errors found"
+              exit 1
+            fi
+          else
+            echo "✅ No YAML issues found!" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload yamllint results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: yamllint-results
+          path: yamllint-results.txt
+
+  ansible-syntax:
+    name: Ansible Syntax Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+      
+      - name: Check playbook syntax
+        run: |
+          cd ansible
+          
+          # Find all playbooks
+          PLAYBOOKS=$(find playbooks -name "*.yml" -o -name "*.yaml" 2>/dev/null || echo "")
+          
+          if [ -z "$PLAYBOOKS" ]; then
+            echo "No playbooks found to check"
+            exit 0
+          fi
+          
+          echo "Checking playbook syntax..."
+          FAILED=0
+          
+          for playbook in $PLAYBOOKS; do
+            echo "Checking: $playbook"
+            if ansible-playbook --syntax-check "$playbook" 2>&1; then
+              echo "✅ $playbook - Syntax OK"
+            else
+              echo "::error file=$playbook::Syntax check failed"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          
+          if [ $FAILED -gt 0 ]; then
+            echo "::error::$FAILED playbook(s) failed syntax check"
+            exit 1
+          fi
+          
+          echo "✅ All playbooks passed syntax check"
+
+  ansible-inventory:
+    name: Ansible Inventory Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+      
+      - name: Validate inventory files
+        run: |
+          cd ansible
+          
+          # Find inventory files
+          INVENTORIES=$(find inventory -name "*.ini" -o -name "*.yml" -o -name "*.yaml" 2>/dev/null || echo "")
+          
+          if [ -z "$INVENTORIES" ]; then
+            echo "No inventory files found"
+            exit 0
+          fi
+          
+          echo "Validating inventory files..."
+          FAILED=0
+          
+          for inv in $INVENTORIES; do
+            echo "Checking: $inv"
+            if ansible-inventory -i "$inv" --list > /dev/null 2>&1; then
+              echo "✅ $inv - Valid"
+            else
+              echo "::warning file=$inv::Inventory validation failed"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          
+          if [ $FAILED -gt 0 ]; then
+            echo "::warning::$FAILED inventory file(s) may have issues"
+            # Don't fail build for inventory issues
+          else
+            echo "✅ All inventory files validated"
+          fi
+
+  summary:
+    name: Ansible Validation Summary
+    runs-on: ubuntu-latest
+    needs: [ansible-lint, yaml-lint, ansible-syntax, ansible-inventory]
+    if: always()
+    
+    steps:
+      - name: Summary
+        run: |
+          echo "## Ansible Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.ansible-lint.result }}" == "success" ]; then
+            echo "✅ Ansible Lint: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Ansible Lint: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.yaml-lint.result }}" == "success" ]; then
+            echo "✅ YAML Lint: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ YAML Lint: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.ansible-syntax.result }}" == "success" ]; then
+            echo "✅ Syntax Check: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Syntax Check: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.ansible-inventory.result }}" == "success" ]; then
+            echo "✅ Inventory Validation: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Inventory Validation: Warnings" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ansible validation complete! 🚀" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Fail if critical checks failed
+        if: |
+          needs.ansible-lint.result == 'failure' ||
+          needs.yaml-lint.result == 'failure' ||
+          needs.ansible-syntax.result == 'failure'
+        run: exit 1
+

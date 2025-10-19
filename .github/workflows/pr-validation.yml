@@ -1,0 +1,259 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  pr-info:
+    name: PR Information
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: PR Details
+        run: |
+          echo "## Pull Request #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Title:** ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Author:** @${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Base:** \`${{ github.event.pull_request.base.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Head:** \`${{ github.event.pull_request.head.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  file-changes:
+    name: Detect File Changes
+    runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.filter.outputs.terraform }}
+      powershell: ${{ steps.filter.outputs.powershell }}
+      ansible: ${{ steps.filter.outputs.ansible }}
+      docs: ${{ steps.filter.outputs.docs }}
+      helm: ${{ steps.filter.outputs.helm }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Filter changed files
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            terraform:
+              - 'terraform/**'
+            powershell:
+              - '**.ps1'
+              - '**.psm1'
+            ansible:
+              - 'ansible/**'
+            docs:
+              - '**.md'
+              - 'docs/**'
+            helm:
+              - 'terraform/azure-tier3/helm-charts/**'
+
+  terraform-check:
+    name: Terraform Validation
+    needs: file-changes
+    if: needs.file-changes.outputs.terraform == 'true'
+    uses: ./.github/workflows/terraform-validate.yml
+
+  powershell-check:
+    name: PowerShell Tests
+    needs: file-changes
+    if: needs.file-changes.outputs.powershell == 'true'
+    uses: ./.github/workflows/powershell-tests.yml
+
+  ansible-check:
+    name: Ansible Lint
+    needs: file-changes
+    if: needs.file-changes.outputs.ansible == 'true'
+    uses: ./.github/workflows/ansible-lint.yml
+
+  pr-size:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check PR size
+        run: |
+          # Get number of changed files
+          FILES_CHANGED=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD | wc -l)
+          
+          # Get number of lines changed
+          LINES_CHANGED=$(git diff --shortstat origin/${{ github.event.pull_request.base.ref }}...HEAD | sed -E 's/.*changed, ([0-9]+) insertion.*/\1/' || echo "0")
+          LINES_DELETED=$(git diff --shortstat origin/${{ github.event.pull_request.base.ref }}...HEAD | sed -E 's/.*([0-9]+) deletion.*/\1/' || echo "0")
+          TOTAL_LINES=$((LINES_CHANGED + LINES_DELETED))
+          
+          echo "## PR Size Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Files changed: **$FILES_CHANGED**" >> $GITHUB_STEP_SUMMARY
+          echo "- Lines changed: **$TOTAL_LINES**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Categorize PR size
+          if [ $FILES_CHANGED -le 5 ] && [ $TOTAL_LINES -le 100 ]; then
+            echo "✅ **Size: Small** - Quick review expected" >> $GITHUB_STEP_SUMMARY
+          elif [ $FILES_CHANGED -le 20 ] && [ $TOTAL_LINES -le 500 ]; then
+            echo "⚠️ **Size: Medium** - Standard review required" >> $GITHUB_STEP_SUMMARY
+          elif [ $FILES_CHANGED -le 50 ] && [ $TOTAL_LINES -le 1000 ]; then
+            echo "⚠️ **Size: Large** - Extended review needed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🔴 **Size: Extra Large** - Consider breaking into smaller PRs" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::This PR is very large. Consider breaking it into smaller, more focused PRs for easier review."
+          fi
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    needs: file-changes
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check for README updates
+        run: |
+          # Check if code was changed without updating docs
+          HAS_CODE_CHANGES=false
+          HAS_DOC_CHANGES=false
+          
+          if git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD | grep -E '\.(tf|ps1|psm1|yml|yaml)$'; then
+            HAS_CODE_CHANGES=true
+          fi
+          
+          if git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD | grep -E '\.md$'; then
+            HAS_DOC_CHANGES=true
+          fi
+          
+          if [ "$HAS_CODE_CHANGES" = true ] && [ "$HAS_DOC_CHANGES" = false ]; then
+            echo "::warning::Code changes detected but no documentation updates. Consider updating relevant documentation."
+          fi
+      
+      - name: Check for broken links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'no'
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+      
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+        continue-on-error: true
+
+  commit-quality:
+    name: Commit Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check commit messages
+        run: |
+          echo "## Commit Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Get commits in PR
+          git log --oneline origin/${{ github.event.pull_request.base.ref }}..HEAD > commits.txt
+          
+          COMMIT_COUNT=$(wc -l < commits.txt)
+          echo "- Total commits: **$COMMIT_COUNT**" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for conventional commits
+          CONVENTIONAL=0
+          while IFS= read -r commit; do
+            if echo "$commit" | grep -qE '^[a-f0-9]+ (feat|fix|docs|style|refactor|perf|test|chore|ci)(\(.+\))?: .+'; then
+              CONVENTIONAL=$((CONVENTIONAL + 1))
+            fi
+          done < commits.txt
+          
+          if [ $CONVENTIONAL -gt 0 ]; then
+            PERCENT=$((CONVENTIONAL * 100 / COMMIT_COUNT))
+            echo "- Conventional commits: **$CONVENTIONAL/$COMMIT_COUNT** ($PERCENT%)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check for merge commits
+          MERGE_COMMITS=$(git log origin/${{ github.event.pull_request.base.ref }}..HEAD --merges --oneline | wc -l)
+          if [ $MERGE_COMMITS -gt 0 ]; then
+            echo "- ⚠️ Merge commits found: **$MERGE_COMMITS**" >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Consider rebasing to remove merge commits"
+          fi
+
+  summary:
+    name: PR Validation Summary
+    runs-on: ubuntu-latest
+    needs: [pr-info, file-changes, pr-size, documentation-check, security-scan, commit-quality]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## ✅ PR Validation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All automated checks have completed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Changes Detected" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.file-changes.outputs.terraform }}" == "true" ]; then
+            echo "- 🔧 Terraform changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.file-changes.outputs.powershell }}" == "true" ]; then
+            echo "- 💻 PowerShell changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.file-changes.outputs.ansible }}" == "true" ]; then
+            echo "- ⚙️ Ansible changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.file-changes.outputs.docs }}" == "true" ]; then
+            echo "- 📚 Documentation changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.file-changes.outputs.helm }}" == "true" ]; then
+            echo "- ☸️ Helm changes" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ready for review! 🚀" >> $GITHUB_STEP_SUMMARY
+

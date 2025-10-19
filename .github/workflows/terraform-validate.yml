@@ -1,0 +1,286 @@
+name: Terraform Validation
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - develop
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-validate.yml'
+  workflow_dispatch:
+
+env:
+  TF_VERSION: '1.6.0'
+  TFLINT_VERSION: 'v0.48.0'
+
+jobs:
+  terraform-fmt:
+    name: Terraform Format Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      
+      - name: Terraform Format Check
+        id: fmt
+        run: |
+          cd terraform/${{ matrix.tier }}
+          terraform fmt -check -recursive
+        continue-on-error: true
+      
+      - name: Post Format Results
+        if: steps.fmt.outcome == 'failure'
+        run: |
+          echo "::error::Terraform files in ${{ matrix.tier }} are not properly formatted"
+          echo "Run 'terraform fmt -recursive' to fix formatting"
+          exit 1
+
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    needs: terraform-fmt
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      
+      - name: Terraform Init
+        id: init
+        run: |
+          cd terraform/${{ matrix.tier }}
+          terraform init -backend=false
+      
+      - name: Terraform Validate
+        id: validate
+        run: |
+          cd terraform/${{ matrix.tier }}
+          terraform validate -no-color
+      
+      - name: Post Validation Results
+        if: always()
+        run: |
+          if [ "${{ steps.validate.outcome }}" == "failure" ]; then
+            echo "::error::Terraform validation failed for ${{ matrix.tier }}"
+            exit 1
+          fi
+          echo "✅ Terraform validation passed for ${{ matrix.tier }}"
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    needs: terraform-fmt
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+      
+      - name: Initialize TFLint
+        run: |
+          cd terraform/${{ matrix.tier }}
+          tflint --init
+      
+      - name: Run TFLint
+        id: tflint
+        run: |
+          cd terraform/${{ matrix.tier }}
+          tflint --format=compact
+        continue-on-error: true
+      
+      - name: Post TFLint Results
+        if: steps.tflint.outcome == 'failure'
+        run: |
+          echo "::warning::TFLint found issues in ${{ matrix.tier }}"
+          # Don't fail the build for warnings
+          exit 0
+
+  terraform-docs:
+    name: Terraform Docs Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check for README.md
+        id: readme
+        run: |
+          if [ ! -f "terraform/${{ matrix.tier }}/README.md" ]; then
+            echo "::warning::README.md not found in terraform/${{ matrix.tier }}"
+            exit 0
+          fi
+          echo "✅ README.md exists for ${{ matrix.tier }}"
+      
+      - name: Check for examples
+        id: examples
+        run: |
+          if [ -f "terraform/${{ matrix.tier }}/terraform.tfvars.example" ]; then
+            echo "✅ Example tfvars file exists"
+          else
+            echo "::warning::terraform.tfvars.example not found in ${{ matrix.tier }}"
+          fi
+
+  terraform-security:
+    name: Terraform Security Scan
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform/${{ matrix.tier }}
+          soft_fail: true
+          format: sarif
+          additional_args: --minimum-severity MEDIUM
+      
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: results.sarif
+
+  terraform-cost:
+    name: Terraform Cost Estimation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        tier:
+          - azure-free-tier
+          - azure-tier2
+          - azure-tier3
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      
+      - name: Terraform Init
+        run: |
+          cd terraform/${{ matrix.tier }}
+          terraform init -backend=false
+      
+      - name: Terraform Plan
+        id: plan
+        run: |
+          cd terraform/${{ matrix.tier }}
+          terraform plan -out=tfplan -no-color
+        continue-on-error: true
+      
+      - name: Estimate Costs (Infracost)
+        uses: infracost/actions/setup@v2
+        if: steps.plan.outcome == 'success'
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+      
+      - name: Generate Cost Report
+        if: steps.plan.outcome == 'success'
+        run: |
+          cd terraform/${{ matrix.tier }}
+          infracost breakdown --path tfplan --format json > cost-estimate.json || echo "Infracost not configured"
+        continue-on-error: true
+
+  summary:
+    name: Terraform Validation Summary
+    runs-on: ubuntu-latest
+    needs: [terraform-fmt, terraform-validate, tflint, terraform-docs, terraform-security]
+    if: always()
+    
+    steps:
+      - name: Check Results
+        run: |
+          echo "## Terraform Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.terraform-fmt.result }}" == "success" ]; then
+            echo "✅ Format Check: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Format Check: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.terraform-validate.result }}" == "success" ]; then
+            echo "✅ Validation: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Validation: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.tflint.result }}" == "success" ]; then
+            echo "✅ TFLint: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ TFLint: Warnings" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.terraform-security.result }}" == "success" ]; then
+            echo "✅ Security Scan: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Security Scan: Issues Found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All Terraform configurations validated successfully! 🚀" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Fail if critical checks failed
+        if: |
+          needs.terraform-fmt.result == 'failure' ||
+          needs.terraform-validate.result == 'failure'
+        run: exit 1
+
