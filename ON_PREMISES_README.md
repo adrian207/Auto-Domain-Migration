@@ -78,24 +78,39 @@ NO CLOUD │ 100% LOCAL │ AIR-GAP READY
 
 ---
 
-## 📊 Hardware Requirements
+## 📊 Hardware Requirements (Server Migration Sizing)
 
-### Tier 1 (50-100 users)
+### Tier 1 (10-50 servers)
 ```
-1 server: 24 vCPU, 128 GB RAM, 2 TB SSD
-Cost: ~$10,000
-```
+2 servers (redundancy): 24 vCPU, 128 GB RAM each
+Storage: 2 TB NVMe + 8 TB HDD per server
+Migration Rate: ~5 servers per day
+Cost: ~$15,000
 
-### Tier 2 (500-1,000 users)
-```
-3 servers: 32 vCPU, 256 GB RAM, 12 TB each
-Cost: ~$40,000
+Formula: 30 servers × 100 GB × 2 = 6 TB migration data
 ```
 
-### Tier 3 (3,000-5,000 users)
+### Tier 2 (50-200 servers)
 ```
-6 servers: 48 vCPU, 512 GB RAM, 24 TB each
-Cost: ~$150,000
+3-4 servers: 40 vCPU, 384 GB RAM each
+Storage: 4 TB NVMe + 20 TB HDD per server
+Migration Rate: ~15-20 servers per day
+Cost: ~$65,000
+
+Formula: 150 servers × 200 GB × 2 = 60 TB migration data
+Recommended: Separate NAS/SAN for file server data
+```
+
+### Tier 3 (200-1,000 servers)
+```
+6-8 servers: 56 vCPU, 768 GB RAM each
+Storage: 8 TB NVMe + 32 TB SSD per server
+Plus: Dedicated 100-500 TB SAN/Ceph cluster
+Migration Rate: ~50+ servers per day
+Cost: ~$225,000
+
+Formula: 500 servers × 300 GB × 2 = 300 TB migration data
+Network: 40/100 Gbps backend recommended
 ```
 
 ---
