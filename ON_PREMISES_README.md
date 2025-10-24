@@ -47,15 +47,18 @@ NO CLOUD │ 100% LOCAL │ AIR-GAP READY │ SERVER-FOCUSED
 
 | Timeframe | On-Premises | Cloud (Azure) |
 |-----------|-------------|---------------|
-| **Year 1** | $15-231k (hardware) | $9.6-60k (monthly fees) |
-| **Year 2** | $16.2-237k (power only) | $19.2-120k (total) |
-| **Year 3** | $18.6-243k (total) | $28.8-180k (total) |
-| **Year 5** | $21.2-255k (total) | $48-300k (total) |
-| **Break-even** | 8-18 months | N/A |
+| **Year 1** | $3-30k (hardware) | $9.6-60k (monthly fees) |
+| **Year 2** | $4.2-36k (power only) | $19.2-120k (total) |
+| **Year 3** | $6.6-42k (total) | $28.8-180k (total) |
+| **Year 5** | $9-48k (total) | $48-300k (total) |
+| **Break-even** | 1-12 months | N/A |
 
-**After break-even:** Pure savings, only power/cooling (~$100-500/month)
+**After break-even:** Pure savings, only power/cooling (~$50-200/month)
 
-**Key Advantage:** On-premises eliminates cloud bandwidth costs for large file server migrations
+**Key Advantages:**
+- Lower upfront investment (can reuse existing hardware)
+- No cloud bandwidth costs for large file server migrations
+- Break-even much faster with reduced hardware requirements
 
 ---
 
@@ -85,37 +88,58 @@ NO CLOUD │ 100% LOCAL │ AIR-GAP READY │ SERVER-FOCUSED
 
 ## 📊 Hardware Requirements (Server Migration Sizing)
 
-### Tier 1 (10-50 servers)
+### Tier 1 (10-50 servers) - Minimal Setup
 ```
-2 servers (redundancy): 24 vCPU, 128 GB RAM each
-Storage: 2 TB NVMe + 8 TB HDD per server
+Single Server: 8 vCPU, 32 GB RAM
+Storage: 500 GB SSD + existing NAS/file server storage
 Migration Rate: ~5 servers per day
-Cost: ~$15,000
+Cost: ~$3,000 (or use existing hardware)
 
-Formula: 30 servers × 100 GB × 2 = 6 TB migration data
+VMs on single host:
+- 1x Automation (AWX + Ansible):  4 vCPU, 16 GB RAM
+- 1x Monitoring (Prom + Grafana): 2 vCPU, 8 GB RAM  
+- 1x PostgreSQL:                  2 vCPU, 8 GB RAM
+
+Note: Use existing file servers for source/target storage
 ```
 
-### Tier 2 (50-200 servers)
+### Tier 2 (50-200 servers) - Production Setup
 ```
-3-4 servers: 40 vCPU, 384 GB RAM each
-Storage: 4 TB NVMe + 20 TB HDD per server
+2 servers: 16 vCPU, 64 GB RAM each (for HA)
+Storage: 1 TB SSD per server + existing storage infrastructure
 Migration Rate: ~15-20 servers per day
-Cost: ~$65,000
+Cost: ~$10,000-15,000
 
-Formula: 150 servers × 200 GB × 2 = 60 TB migration data
-Recommended: Separate NAS/SAN for file server data
+VMs distributed across hosts:
+- 2x Automation (HA):             4 vCPU, 16 GB RAM each
+- 2x PostgreSQL (HA):             4 vCPU, 12 GB RAM each
+- 2x Monitoring (HA):             2 vCPU, 8 GB RAM each
+- 1x Vault:                       2 vCPU, 4 GB RAM
+
+Note: Leverage existing file servers, NAS, or SAN for migration storage
 ```
 
-### Tier 3 (200-1,000 servers)
+### Tier 3 (200-1,000 servers) - Enterprise Setup
 ```
-6-8 servers: 56 vCPU, 768 GB RAM each
-Storage: 8 TB NVMe + 32 TB SSD per server
-Plus: Dedicated 100-500 TB SAN/Ceph cluster
+3-4 servers: 16 vCPU, 32 GB RAM each
+Storage: 1 TB SSD per server + existing enterprise storage
 Migration Rate: ~50+ servers per day
-Cost: ~$225,000
+Cost: ~$20,000-30,000
 
-Formula: 500 servers × 300 GB × 2 = 300 TB migration data
-Network: 40/100 Gbps backend recommended
+Options:
+A) VM-based (simpler):
+   - 3x Automation cluster:       4 vCPU, 12 GB RAM each
+   - 3x PostgreSQL HA:            4 vCPU, 8 GB RAM each
+   - 3x Monitoring HA:            2 vCPU, 4 GB RAM each
+   - 1x Vault:                    2 vCPU, 4 GB RAM
+   
+B) Kubernetes-based (advanced):
+   - 3x K3s nodes:                16 vCPU, 32 GB RAM each
+   - Run all services as lightweight containers
+   - Better resource utilization
+
+Note: Use existing SAN/NAS for file server migration data
+Bandwidth: 10 Gbps network recommended (1 Gbps minimum)
 ```
 
 ---
@@ -261,9 +285,11 @@ Both branches provide:
 **Both are valid approaches!** Choose based on your requirements.
 
 **Break-Even Analysis:**
-- **Tier 1 (10-50 servers):** 18 months
-- **Tier 2 (50-200 servers):** 12 months
-- **Tier 3 (200-1,000 servers):** 8-10 months (faster at scale)
+- **Tier 1 (10-50 servers):** 1-3 months (immediate if reusing hardware)
+- **Tier 2 (50-200 servers):** 3-6 months
+- **Tier 3 (200-1,000 servers):** 6-12 months
+
+**Pro Tip:** Most organizations have spare capacity on existing servers that can run the automation infrastructure at zero additional hardware cost!
 
 ---
 
