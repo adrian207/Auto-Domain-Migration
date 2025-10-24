@@ -26,9 +26,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
@@ -60,9 +60,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
@@ -101,9 +101,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
@@ -139,9 +139,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
@@ -172,9 +172,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
@@ -201,9 +201,9 @@ jobs:
     strategy:
       matrix:
         tier:
-          - azure-free-tier
-          - azure-tier2
-          - azure-tier3
+          - aws-pilot
+          - azure-hub-lab
+          - gcp-sandbox
     
     steps:
       - name: Checkout code
