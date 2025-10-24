@@ -1,6 +1,7 @@
 variable "subscription_id" {
   description = "Azure subscription ID"
   type        = string
+  default     = "00000000-0000-0000-0000-000000000000"
 }
 
 variable "location" {
@@ -40,12 +41,13 @@ variable "admin_username" {
 variable "windows_admin_password" {
   description = "Password for Windows VMs"
   type        = string
+  default     = "ChangeM3!Passw0rd"
 }
 
 variable "ssh_public_key" {
   description = "SSH public key"
   type        = string
-  default     = ""
+  default     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7exampleplaceholderkeyforvalidation migrate@example.com"
 }
 
 variable "servers" {

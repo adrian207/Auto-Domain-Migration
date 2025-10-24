@@ -34,6 +34,7 @@ tests/             # Lightweight validation suite
    ```bash
    cd terraform/aws-pilot
    terraform init
+   # Override the placeholder defaults before running in a real environment
    terraform apply -var "bastion_ami=ami-xxxxxxxx"
    ```
 2. **Generate Inventory** from Terraform outputs (or craft manually):
@@ -52,6 +53,10 @@ tests/             # Lightweight validation suite
    ```bash
    ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/master_migration.yml -e wave_id=wave1
    ```
+
+> **Note:** The Terraform examples ship with placeholder values for items such as AMI IDs, subscription IDs, projects, and SSH
+> keys so automated validation can succeed. Replace these defaults with environment-specific values before deploying any
+> infrastructure.
 
 ## Documentation
 

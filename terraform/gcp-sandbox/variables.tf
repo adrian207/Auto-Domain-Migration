@@ -1,6 +1,7 @@
 variable "project" {
   type        = string
   description = "GCP project"
+  default     = "server-migration-sandbox"
 }
 
 variable "region" {
@@ -44,7 +45,7 @@ variable "admin_username" {
 
 variable "ssh_public_key" {
   type        = string
-  default     = ""
+  default     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7exampleplaceholderkeyforvalidation migrate@example.com"
 }
 
 variable "servers" {

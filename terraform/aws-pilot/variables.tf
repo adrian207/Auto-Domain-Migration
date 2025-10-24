@@ -29,6 +29,7 @@ variable "operator_cidr" {
 variable "bastion_ami" {
   description = "AMI used for bastion host"
   type        = string
+  default     = "ami-1234567890abcdef0"
 }
 
 variable "bastion_instance_type" {
