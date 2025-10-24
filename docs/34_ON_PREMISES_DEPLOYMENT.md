@@ -172,13 +172,23 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 **Hardware Requirements:**
 - Single server: 8 vCPU, 32 GB RAM, 500 GB SSD
 - Or reuse existing server with spare capacity
-- Use existing file servers for source/target storage
 
 **Components:**
 ```
 1x Automation (AWX + Ansible)        - 4 vCPU, 16 GB RAM
 1x Monitoring (Prom + Grafana)       - 2 vCPU, 8 GB RAM
 1x PostgreSQL                        - 2 vCPU, 8 GB RAM
+```
+
+**Migration Storage Requirements (NAS/File Server):**
+```
+- USMT backup staging:          10-15 GB per server × 50 = ~750 GB
+- File server staging:          15-20% of source data
+- Database backups:             2x database size
+- Temporary/working space:      ~250 GB
+- Total migration storage:      1-2 TB minimum
+- IOPS:                         2,000+ for concurrent migrations
+- Network:                      1 Gbps minimum
 ```
 
 **Migration Capacity:**
@@ -200,8 +210,7 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 
 **Hardware Requirements:**
 - 2 servers: 16 vCPU, 64 GB RAM each (for HA)
-- 1 TB SSD per server
-- Use existing file servers, NAS, or SAN for migration storage
+- 1 TB SSD per server (OS/Applications)
 
 **Components (distributed across 2 hosts):**
 ```
@@ -209,6 +218,17 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 2x PostgreSQL HA                     - 4 vCPU, 12 GB RAM each
 2x Monitoring (Prom/Grafana) HA      - 2 vCPU, 8 GB RAM each
 1x Vault                             - 2 vCPU, 4 GB RAM
+```
+
+**Migration Storage Requirements (NAS/SAN/File Server):**
+```
+- USMT backup staging:          10-20 GB per server × 200 = ~4 TB
+- File server staging:          20-30% of source data (buffer)
+- Database backups:             2-3x database size
+- Temporary/working space:      ~1 TB
+- Total migration storage:      4-10 TB (depends on migration wave size)
+- IOPS:                         5,000+ for parallel migrations
+- Network:                      1 Gbps minimum, 10 Gbps recommended
 ```
 
 **Migration Capacity:**
@@ -229,23 +249,45 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 - Multi-datacenter, global operations
 
 **Hardware Requirements:**
-- 3-4 physical servers (or VMs on existing hardware)
-- 48-64 vCPUs total
-- 96-128 GB RAM total
-- 3-4 TB SSD storage (+ existing file server storage)
+
+**Option A - VM-based (simpler):**
+- 4 physical servers: 24 vCPU, 96 GB RAM each (N+1 HA)
+- 2 TB NVMe SSD per server (OS/Applications)
+- Total: 96 vCPUs, 384 GB RAM
+
+**Option B - Kubernetes-based (more efficient):**
+- 4 physical servers: 24 vCPU, 64 GB RAM each (N+1 HA)
+- 2 TB NVMe SSD per server (OS/Applications)
+- Total: 96 vCPUs, 256 GB RAM
+- ~$10k less hardware cost vs VM-based
 
 **Components (Option A - VM-based, simpler):**
 ```
-3x Automation cluster (AWX/Ansible) - 4 vCPU, 12 GB RAM each
-3x PostgreSQL HA cluster            - 4 vCPU, 8 GB RAM each
-3x Monitoring (Prom/Grafana) HA     - 2 vCPU, 4 GB RAM each
-1x Vault                            - 2 vCPU, 4 GB RAM
+4x Automation cluster (AWX/Ansible) - 6 vCPU, 24 GB RAM each
+3x PostgreSQL HA cluster            - 6 vCPU, 20 GB RAM each
+3x Monitoring (Prom/Grafana) HA     - 4 vCPU, 12 GB RAM each
+1x Vault HA                         - 4 vCPU, 8 GB RAM
 ```
 
 **Components (Option B - Kubernetes-based, advanced):**
 ```
-3x K3s nodes                        - 16 vCPU, 32 GB RAM each
-All services run as lightweight containers for better resource utilization
+4x K3s nodes                        - 24 vCPU, 64 GB RAM each
+All services run as containers with 70-80% resource utilization
+Auto-scaling capabilities for peak migration loads
+Lower memory footprint due to containerization
+```
+
+**Migration Storage Requirements (Enterprise SAN/NAS):**
+```
+- USMT backup staging:          15-25 GB per server × 1,000 = ~20 TB
+- File server staging:          30-40% of source data (for waves)
+- Database backups:             3-4x database size
+- Temporary/working space:      ~5 TB
+- Deduplication storage:        ~40-50% reduction (if enabled)
+- Total migration storage:      20-50 TB (depends on migration strategy)
+- IOPS:                         20,000+ for parallel migrations (SSD/NVMe SAN)
+- Network:                      10 Gbps minimum, 25/40 Gbps recommended
+- Recommended:                  Dedicated migration VLAN/network segment
 ```
 
 **Migration Capacity:**
@@ -254,7 +296,7 @@ All services run as lightweight containers for better resource utilization
 - Multi-region orchestration
 - Automated testing & validation
 
-**Cost:** ~$20-30k hardware (one-time), leverage existing storage infrastructure
+**Cost:** ~$30-40k hardware (one-time), leverage existing storage infrastructure
 
 **Note:** Use existing SAN/NAS for file server migration data. No need for dedicated file server VMs.
 
