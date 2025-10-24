@@ -17,7 +17,7 @@ on:
       destroy:
         description: 'Destroy infrastructure after deployment (for testing)'
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 env:
@@ -103,7 +103,6 @@ jobs:
     needs: plan
     environment:
       name: tier1-demo
-      url: https://portal.azure.com
     
     steps:
       - name: Checkout code
