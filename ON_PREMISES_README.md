@@ -91,7 +91,7 @@ NO CLOUD │ 100% LOCAL │ AIR-GAP READY │ SERVER-FOCUSED
 ### Tier 1 (10-50 servers) - Minimal Setup
 ```
 Single Server: 8 vCPU, 32 GB RAM
-Storage: 500 GB SSD + existing NAS/file server storage
+Storage: 500 GB SSD (OS/Apps)
 Migration Rate: ~5 servers per day
 Cost: ~$3,000 (or use existing hardware)
 
@@ -100,13 +100,20 @@ VMs on single host:
 - 1x Monitoring (Prom + Grafana): 2 vCPU, 8 GB RAM  
 - 1x PostgreSQL:                  2 vCPU, 8 GB RAM
 
-Note: Use existing file servers for source/target storage
+Migration Storage Requirements (NAS/File Server):
+- USMT backup staging:            10-15 GB per server × 50 = ~750 GB
+- File server staging:            15-20% of source data
+- Database backups:               2x database size
+- Temporary/working space:        ~250 GB
+- Total migration storage:        1-2 TB minimum
+- IOPS: 2,000+ for concurrent migrations
+- Network: 1 Gbps minimum
 ```
 
 ### Tier 2 (50-200 servers) - Production Setup
 ```
 2 servers: 16 vCPU, 64 GB RAM each (for HA)
-Storage: 1 TB SSD per server + existing storage infrastructure
+Storage: 1 TB SSD per server (OS/Apps)
 Migration Rate: ~15-20 servers per day
 Cost: ~$10,000-15,000
 
@@ -116,30 +123,50 @@ VMs distributed across hosts:
 - 2x Monitoring (HA):             2 vCPU, 8 GB RAM each
 - 1x Vault:                       2 vCPU, 4 GB RAM
 
-Note: Leverage existing file servers, NAS, or SAN for migration storage
+Migration Storage Requirements (NAS/SAN/File Server):
+- USMT backup staging:            10-20 GB per server × 200 = ~4 TB
+- File server staging:            20-30% of source data (buffer)
+- Database backups:               2-3x database size
+- Temporary/working space:        ~1 TB
+- Total migration storage:        4-10 TB (depends on migration wave size)
+- IOPS: 5,000+ for parallel migrations
+- Network: 1 Gbps minimum, 10 Gbps recommended
 ```
 
 ### Tier 3 (200-1,000 servers) - Enterprise Setup
 ```
-3-4 servers: 16 vCPU, 32 GB RAM each
-Storage: 1 TB SSD per server + existing enterprise storage
+Hardware Options:
+A) VM-based (simpler):     4 servers @ 24 vCPU, 96 GB RAM each
+B) K8s-based (efficient):  4 servers @ 24 vCPU, 64 GB RAM each
+
+Storage: 2 TB NVMe SSD per server (OS/Apps)
 Migration Rate: ~50+ servers per day
-Cost: ~$20,000-30,000
+Cost: ~$25,000-40,000
 
 Options:
 A) VM-based (simpler):
-   - 3x Automation cluster:       4 vCPU, 12 GB RAM each
-   - 3x PostgreSQL HA:            4 vCPU, 8 GB RAM each
-   - 3x Monitoring HA:            2 vCPU, 4 GB RAM each
-   - 1x Vault:                    2 vCPU, 4 GB RAM
+   - 4x Automation cluster:       6 vCPU, 24 GB RAM each
+   - 3x PostgreSQL HA:            6 vCPU, 20 GB RAM each
+   - 3x Monitoring HA:            4 vCPU, 12 GB RAM each
+   - 1x Vault HA:                 4 vCPU, 8 GB RAM
    
-B) Kubernetes-based (advanced):
-   - 3x K3s nodes:                16 vCPU, 32 GB RAM each
-   - Run all services as lightweight containers
-   - Better resource utilization
+B) Kubernetes-based (advanced, more efficient):
+   - 4x K3s nodes:                24 vCPU, 64 GB RAM each
+   - Run all services as containers
+   - Better resource utilization (70-80% vs 50-60%)
+   - Auto-scaling capabilities
+   - Lower memory footprint due to containerization
 
-Note: Use existing SAN/NAS for file server migration data
-Bandwidth: 10 Gbps network recommended (1 Gbps minimum)
+Migration Storage Requirements (Enterprise SAN/NAS):
+- USMT backup staging:            15-25 GB per server × 1,000 = ~20 TB
+- File server staging:            30-40% of source data (for waves)
+- Database backups:               3-4x database size
+- Temporary/working space:        ~5 TB
+- Deduplication storage:          ~40-50% reduction (if enabled)
+- Total migration storage:        20-50 TB (depends on migration strategy)
+- IOPS: 20,000+ for parallel migrations (SSD/NVMe SAN)
+- Network: 10 Gbps minimum, 25/40 Gbps recommended for large file servers
+- Recommended: Dedicated migration VLAN/network segment
 ```
 
 ---
