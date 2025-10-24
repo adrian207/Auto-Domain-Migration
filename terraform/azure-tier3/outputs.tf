@@ -170,16 +170,16 @@ output "aks_portal_url" {
 output "deployment_summary" {
   description = "Summary of the deployment"
   value = {
-    tier                    = "3 (Enterprise)"
-    aks_cluster            = azurerm_kubernetes_cluster.main.name
-    kubernetes_version     = azurerm_kubernetes_cluster.main.kubernetes_version
-    system_nodes           = "${var.system_node_pool_min_count}-${var.system_node_pool_max_count}"
-    worker_nodes           = "${var.worker_node_pool_min_count}-${var.worker_node_pool_max_count}"
-    region                 = azurerm_resource_group.main.location
-    resource_group         = azurerm_resource_group.main.name
-    monitoring_enabled     = var.enable_container_insights
-    private_cluster        = var.enable_private_cluster
-    auto_scaling_enabled   = var.enable_auto_scaling
+    tier                 = "3 (Enterprise)"
+    aks_cluster          = azurerm_kubernetes_cluster.main.name
+    kubernetes_version   = azurerm_kubernetes_cluster.main.kubernetes_version
+    system_nodes         = "${var.system_node_pool_min_count}-${var.system_node_pool_max_count}"
+    worker_nodes         = "${var.worker_node_pool_min_count}-${var.worker_node_pool_max_count}"
+    region               = azurerm_resource_group.main.location
+    resource_group       = azurerm_resource_group.main.name
+    monitoring_enabled   = var.enable_container_insights
+    private_cluster      = var.enable_private_cluster
+    auto_scaling_enabled = var.enable_auto_scaling
   }
 }
 

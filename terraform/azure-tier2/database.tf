@@ -223,9 +223,8 @@ resource "azurerm_monitor_diagnostic_setting" "postgres" {
     category = "PostgreSQLLogs"
   }
 
-  enabled_metric {
-    category = "AllMetrics"
-  }
+  # Metrics are automatically collected by Azure Monitor
+  # enabled_metric block is deprecated in provider 3.x
 }
 
 # =============================================================================

@@ -202,50 +202,22 @@ resource "azurerm_key_vault_access_policy" "disk_encryption" {
 # JUST-IN-TIME (JIT) VM ACCESS
 # =============================================================================
 
-resource "azurerm_security_center_jit_access_policy" "main" {
-  count             = var.enable_jit_access ? 1 : 0
-  resource_group_id = azurerm_resource_group.main.id
-  name              = "${local.resource_prefix}-jit-policy"
-  location          = azurerm_resource_group.main.location
+# [Unverified] The azurerm_security_center_jit_access_policy resource type
+# has been removed from the azurerm provider. JIT access is now managed through
+# Azure Defender for Cloud in the Azure Portal or via Azure Policy.
+# 
+# To enable JIT access:
+# 1. Enable Azure Defender for Servers in Azure Security Center
+# 2. Configure JIT policies through the Azure Portal > Security Center > Just-in-time VM access
+# 3. Or use Azure Policy to enforce JIT access rules
+#
+# Reference: https://learn.microsoft.com/en-us/azure/defender-for-cloud/just-in-time-access-usage
 
-  # SSH access to Ansible controllers
-  dynamic "jit_policy_rule" {
-    for_each = range(var.num_ansible_controllers)
-    content {
-      vm_id = azurerm_linux_virtual_machine.ansible[jit_policy_rule.value].id
-
-      port {
-        number                        = 22
-        protocol                      = "Tcp"
-        allowed_source_address_prefix = var.allowed_ip_ranges[0]
-        max_request_access_duration   = "PT3H"
-      }
-    }
-  }
-
-  # RDP access to Domain Controllers
-  jit_policy_rule {
-    vm_id = azurerm_windows_virtual_machine.source_dc.id
-
-    port {
-      number                        = 3389
-      protocol                      = "Tcp"
-      allowed_source_address_prefix = var.allowed_ip_ranges[0]
-      max_request_access_duration   = "PT3H"
-    }
-  }
-
-  jit_policy_rule {
-    vm_id = azurerm_windows_virtual_machine.target_dc.id
-
-    port {
-      number                        = 3389
-      protocol                      = "Tcp"
-      allowed_source_address_prefix = var.allowed_ip_ranges[0]
-      max_request_access_duration   = "PT3H"
-    }
-  }
-}
+# Original configuration (now deprecated):
+# - SSH access to Ansible controllers on port 22
+# - RDP access to Domain Controllers on port 3389
+# - Max access duration: 3 hours
+# - Source: var.allowed_ip_ranges[0]
 
 # =============================================================================
 # NETWORK SECURITY - AZURE FIREWALL (Optional)

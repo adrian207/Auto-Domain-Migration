@@ -81,9 +81,9 @@ resource "azurerm_storage_account" "main" {
 
 # Blob containers
 resource "azurerm_storage_container" "containers" {
-  for_each          = toset(var.blob_container_names)
-  name              = each.value
-  storage_account_id = azurerm_storage_account.main.id
+  for_each             = toset(var.blob_container_names)
+  name                 = each.value
+  storage_account_name = azurerm_storage_account.main.name
 }
 
 # =============================================================================
@@ -105,10 +105,10 @@ resource "azurerm_key_vault" "main" {
   network_acls {
     default_action = "Deny"
     bypass         = "AzureServices"
-    
+
     # Add specific IP ranges if needed
     ip_rules = var.authorized_ip_ranges
-    
+
     # Allow access from AKS subnet
     virtual_network_subnet_ids = [
       azurerm_subnet.aks.id
@@ -187,7 +187,7 @@ resource "azurerm_consumption_budget_resource_group" "main" {
     operator  = "GreaterThan"
 
     contact_emails = [
-      "admin@example.com"  # Update with actual email
+      "admin@example.com" # Update with actual email
     ]
   }
 }
@@ -203,7 +203,7 @@ resource "azurerm_monitor_action_group" "main" {
 
   email_receiver {
     name                    = "Admin-Email"
-    email_address           = "admin@example.com"  # Update with actual email
+    email_address           = "admin@example.com" # Update with actual email
     use_common_alert_schema = true
   }
 

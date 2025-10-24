@@ -13,7 +13,7 @@ resource "azurerm_windows_virtual_machine" "source_fileserver" {
   name                = "${local.resource_prefix}-src-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
+  size                = "Standard_D4s_v5" # 4 vCPU, 16GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
 
@@ -49,7 +49,7 @@ resource "azurerm_managed_disk" "source_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 2048  # 2TB
+  disk_size_gb         = 2048 # 2TB
 
   tags = var.tags
 }
@@ -84,7 +84,7 @@ resource "azurerm_windows_virtual_machine" "target_fileserver" {
   name                = "${local.resource_prefix}-tgt-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
+  size                = "Standard_D4s_v5" # 4 vCPU, 16GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
 
@@ -120,7 +120,7 @@ resource "azurerm_managed_disk" "target_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 2048  # 2TB
+  disk_size_gb         = 2048 # 2TB
 
   tags = var.tags
 }
@@ -173,8 +173,8 @@ resource "azurerm_storage_account" "file_storage" {
 resource "azurerm_storage_share" "source_shares" {
   count                = var.use_vm_file_servers ? 0 : 3
   name                 = ["hr", "finance", "engineering"][count.index]
-  storage_account_id   = azurerm_storage_account.file_storage[0].id
-  quota                = 500  # 500 GB per share
+  storage_account_name = azurerm_storage_account.file_storage[0].name
+  quota                = 500 # 500 GB per share
 
   enabled_protocol = "SMB"
 }
@@ -182,8 +182,8 @@ resource "azurerm_storage_share" "source_shares" {
 resource "azurerm_storage_share" "target_shares" {
   count                = var.use_vm_file_servers ? 0 : 3
   name                 = "${["hr", "finance", "engineering"][count.index]}-target"
-  storage_account_id   = azurerm_storage_account.file_storage[0].id
-  quota                = 500  # 500 GB per share
+  storage_account_name = azurerm_storage_account.file_storage[0].name
+  quota                = 500 # 500 GB per share
 
   enabled_protocol = "SMB"
 }
@@ -214,7 +214,7 @@ resource "azurerm_windows_virtual_machine" "sms_orchestrator" {
   name                = "${local.resource_prefix}-sms-orch"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D2s_v5"  # 2 vCPU, 8GB RAM
+  size                = "Standard_D2s_v5" # 2 vCPU, 8GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
 

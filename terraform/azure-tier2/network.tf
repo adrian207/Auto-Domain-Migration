@@ -283,14 +283,13 @@ resource "azurerm_subnet_network_security_group_association" "target_domain" {
 # =============================================================================
 
 resource "azurerm_network_watcher_flow_log" "bastion" {
-  count                = var.enable_nsg_flow_logs && var.enable_log_analytics ? 1 : 0
-  name                 = "${local.resource_prefix}-bastion-flow-log"
-  network_watcher_name = "NetworkWatcher_${var.location}"
-  resource_group_name  = "NetworkWatcherRG"
-
-  target_resource_id = azurerm_network_security_group.bastion.id
-  storage_account_id = azurerm_storage_account.main.id
-  enabled            = true
+  count                      = var.enable_nsg_flow_logs && var.enable_log_analytics ? 1 : 0
+  name                       = "${local.resource_prefix}-bastion-flow-log"
+  network_watcher_name       = "NetworkWatcher_${var.location}"
+  resource_group_name        = "NetworkWatcherRG"
+  network_security_group_id  = azurerm_network_security_group.bastion.id
+  storage_account_id         = azurerm_storage_account.main.id
+  enabled                    = true
 
   retention_policy {
     enabled = true

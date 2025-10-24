@@ -317,26 +317,26 @@ resource "azurerm_container_app" "grafana" {
 # =============================================================================
 
 resource "azurerm_storage_share" "ansible" {
-  name               = "ansible-data"
-  storage_account_id = azurerm_storage_account.main.id
-  quota              = 10 # GB
+  name                 = "ansible-data"
+  storage_account_name = azurerm_storage_account.main.name
+  quota                = 10 # GB
 }
 
 resource "azurerm_storage_share" "prometheus" {
-  name               = "prometheus-data"
-  storage_account_id = azurerm_storage_account.main.id
-  quota              = 50 # GB
+  name                 = "prometheus-data"
+  storage_account_name = azurerm_storage_account.main.name
+  quota                = 50 # GB
 }
 
 resource "azurerm_storage_share" "prometheus_config" {
-  name               = "prometheus-config"
-  storage_account_id = azurerm_storage_account.main.id
-  quota              = 1 # GB
+  name                 = "prometheus-config"
+  storage_account_name = azurerm_storage_account.main.name
+  quota                = 1 # GB
 }
 
 resource "azurerm_storage_share" "grafana" {
-  name               = "grafana-data"
-  storage_account_id = azurerm_storage_account.main.id
-  quota              = 10 # GB
+  name                 = "grafana-data"
+  storage_account_name = azurerm_storage_account.main.name
+  quota                = 10 # GB
 }
 
