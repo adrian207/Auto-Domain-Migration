@@ -175,6 +175,7 @@ resource "azurerm_linux_virtual_machine" "ansible" {
     storage_key       = azurerm_storage_account.main.primary_access_key
     instance_id       = count.index + 1
     num_instances     = var.num_ansible_controllers
+    admin_username    = var.admin_username
   }))
 
   identity {

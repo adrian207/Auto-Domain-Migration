@@ -42,7 +42,7 @@ variable "kubernetes_version" {
 variable "system_node_pool_vm_size" {
   description = "VM size for system node pool"
   type        = string
-  default     = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
+  default     = "Standard_D4s_v5" # 4 vCPU, 16GB RAM
 }
 
 variable "system_node_pool_min_count" {
@@ -60,7 +60,7 @@ variable "system_node_pool_max_count" {
 variable "worker_node_pool_vm_size" {
   description = "VM size for worker node pool"
   type        = string
-  default     = "Standard_D8s_v5"  # 8 vCPU, 32GB RAM
+  default     = "Standard_D8s_v5" # 8 vCPU, 32GB RAM
 }
 
 variable "worker_node_pool_min_count" {
@@ -146,13 +146,13 @@ variable "storage_account_tier" {
 variable "storage_account_replication" {
   description = "Storage account replication type"
   type        = string
-  default     = "GRS"  # Geo-redundant for enterprise
+  default     = "GRS" # Geo-redundant for enterprise
 }
 
 variable "blob_container_names" {
   description = "Blob container names to create"
   type        = list(string)
-  default     = [
+  default = [
     "migration-artifacts",
     "usmt-backups",
     "logs",
@@ -174,13 +174,13 @@ variable "enable_azure_ad_rbac" {
 variable "enable_private_cluster" {
   description = "Enable private cluster (API server not publicly accessible)"
   type        = bool
-  default     = false  # Set to true for maximum security
+  default     = false # Set to true for maximum security
 }
 
 variable "authorized_ip_ranges" {
   description = "Authorized IP ranges for API server access"
   type        = list(string)
-  default     = []  # Empty allows all; restrict in production
+  default     = [] # Empty allows all; restrict in production
 }
 
 variable "key_vault_sku" {
@@ -294,7 +294,7 @@ variable "deploy_target_dc" {
 variable "target_dc_vm_size" {
   description = "VM size for target domain controller"
   type        = string
-  default     = "Standard_B2s"  # 2 vCPU, 4GB RAM
+  default     = "Standard_B2s" # 2 vCPU, 4GB RAM
 }
 
 variable "source_domain_fqdn" {
