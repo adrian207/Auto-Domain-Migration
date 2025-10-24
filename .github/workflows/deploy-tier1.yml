@@ -101,8 +101,7 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: plan
-    environment:
-      name: tier1-demo
+    # environment: tier1-demo  # Create this environment in GitHub repo settings to enable deployment protection
     
     steps:
       - name: Checkout code
@@ -171,8 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: apply
     if: github.event.inputs.destroy == 'true'
-    environment:
-      name: tier1-demo-destroy
+    # environment: tier1-demo-destroy  # Create this environment in GitHub repo settings to enable deployment protection
     
     steps:
       - name: Checkout code

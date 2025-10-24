@@ -42,14 +42,14 @@ resource "azurerm_storage_account" "main" {
 # Storage Container for migration artifacts
 resource "azurerm_storage_container" "artifacts" {
   name                  = "migration-artifacts"
-  storage_account_id    = azurerm_storage_account.main.id
+  storage_account_name  = azurerm_storage_account.main.name
   container_access_type = "private"
 }
 
 # Storage Container for USMT backups
 resource "azurerm_storage_container" "usmt" {
   name                  = "usmt-backups"
-  storage_account_id    = azurerm_storage_account.main.id
+  storage_account_name  = azurerm_storage_account.main.name
   container_access_type = "private"
 }
 
