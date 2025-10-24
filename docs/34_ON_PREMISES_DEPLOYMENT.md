@@ -165,22 +165,20 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 
 **Target Migration Size:**
 - 10-50 Windows/Linux servers
-- 5-20 TB file server data
+- 5-20 TB file server data (use existing file servers)
 - 2 TB database capacity
 - Single datacenter
 
 **Hardware Requirements:**
-- 6 VMs total
-- 32 vCPUs total
-- 80 GB RAM total
-- 1 TB storage (+ migration data capacity)
+- Single server: 8 vCPU, 32 GB RAM, 500 GB SSD
+- Or reuse existing server with spare capacity
+- Use existing file servers for source/target storage
 
 **Components:**
 ```
-2x Domain Controllers (source/target) - 4 vCPU, 8 GB RAM each
-2x File Servers (source/target)       - 4 vCPU, 8 GB RAM each (+ data disks)
-1x Automation VM (AWX + Ansible)      - 8 vCPU, 24 GB RAM
-1x Monitoring VM (Prometheus/Grafana) - 4 vCPU, 8 GB RAM
+1x Automation (AWX + Ansible)        - 4 vCPU, 16 GB RAM
+1x Monitoring (Prom + Grafana)       - 2 vCPU, 8 GB RAM
+1x PostgreSQL                        - 2 vCPU, 8 GB RAM
 ```
 
 **Migration Capacity:**
@@ -188,7 +186,7 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 - 2-10 day migration window
 - Single automation controller
 
-**Cost:** Capital expense only (hardware you already own)
+**Cost:** ~$3,000 hardware (or $0 if reusing existing server)
 
 ---
 
@@ -196,25 +194,21 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 
 **Target Migration Size:**
 - 50-200 Windows/Linux servers
-- 20-100 TB file server data
+- 20-100 TB file server data (use existing storage)
 - 10 TB database capacity
 - Multi-site support
 
 **Hardware Requirements:**
-- 12 VMs total
-- 96 vCPUs total
-- 320 GB RAM total
-- 5 TB storage (+ migration data capacity)
+- 2 servers: 16 vCPU, 64 GB RAM each (for HA)
+- 1 TB SSD per server
+- Use existing file servers, NAS, or SAN for migration storage
 
-**Components:**
+**Components (distributed across 2 hosts):**
 ```
-2x Domain Controllers (HA)           - 4 vCPU, 12 GB RAM each
-4x File Servers (HA with clustering) - 8 vCPU, 24 GB RAM each (+ data disks)
-2x AWX VMs (HA)                      - 8 vCPU, 32 GB RAM each
-2x PostgreSQL (HA with replication)  - 8 vCPU, 24 GB RAM each
-2x Prometheus/Grafana (HA)           - 4 vCPU, 12 GB RAM each
-1x HashiCorp Vault                   - 4 vCPU, 8 GB RAM
-1x Guacamole bastion                 - 2 vCPU, 4 GB RAM
+2x Automation (AWX) HA               - 4 vCPU, 16 GB RAM each
+2x PostgreSQL HA                     - 4 vCPU, 12 GB RAM each
+2x Monitoring (Prom/Grafana) HA      - 2 vCPU, 8 GB RAM each
+1x Vault                             - 2 vCPU, 4 GB RAM
 ```
 
 **Migration Capacity:**
@@ -222,7 +216,7 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 - Parallel migration batches
 - Automated rollback capability
 
-**Cost:** Hardware depreciation only
+**Cost:** ~$10-15k hardware (one-time)
 
 ---
 
@@ -230,26 +224,28 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 
 **Target Migration Size:**
 - 200-1,000 Windows/Linux servers
-- 100-500 TB file server data
+- 100-500 TB file server data (use existing storage)
 - 50 TB database capacity
 - Multi-datacenter, global operations
 
 **Hardware Requirements:**
-- 3-node Kubernetes cluster
-- 25+ VMs total
-- 240+ vCPUs total
-- 1.5 TB RAM total
-- 20 TB storage (+ migration data capacity)
+- 3-4 physical servers (or VMs on existing hardware)
+- 48-64 vCPUs total
+- 96-128 GB RAM total
+- 3-4 TB SSD storage (+ existing file server storage)
 
-**Components:**
+**Components (Option A - VM-based, simpler):**
 ```
-3x Kubernetes nodes                  - 16 vCPU, 96 GB RAM each
-4x Domain Controllers (2 per domain) - 4 vCPU, 12 GB RAM each
-6x File Server Cluster (HA)          - 8 vCPU, 32 GB RAM each (+ data disks)
-3x PostgreSQL HA cluster             - 8 vCPU, 24 GB RAM each
-3x HashiCorp Vault HA                - 4 vCPU, 12 GB RAM each
-6x MinIO nodes (object storage)      - 8 vCPU, 16 GB RAM each
-2x HAProxy load balancers            - 4 vCPU, 8 GB RAM each
+3x Automation cluster (AWX/Ansible) - 4 vCPU, 12 GB RAM each
+3x PostgreSQL HA cluster            - 4 vCPU, 8 GB RAM each
+3x Monitoring (Prom/Grafana) HA     - 2 vCPU, 4 GB RAM each
+1x Vault                            - 2 vCPU, 4 GB RAM
+```
+
+**Components (Option B - Kubernetes-based, advanced):**
+```
+3x K3s nodes                        - 16 vCPU, 32 GB RAM each
+All services run as lightweight containers for better resource utilization
 ```
 
 **Migration Capacity:**
@@ -258,7 +254,9 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 - Multi-region orchestration
 - Automated testing & validation
 
-**Cost:** Significant hardware, but no recurring cloud costs
+**Cost:** ~$20-30k hardware (one-time), leverage existing storage infrastructure
+
+**Note:** Use existing SAN/NAS for file server migration data. No need for dedicated file server VMs.
 
 ---
 
@@ -586,32 +584,27 @@ Recommended: Separate storage array (NAS/SAN) for file server data
 
 ### Tier 3 (200-1,000 servers)
 
-**Enterprise Cluster:**
+**Practical Cluster:**
 ```
-6-8x Physical servers (Kubernetes + storage)
-- 2x CPU (28 cores each, 56 per server)
-- 768 GB RAM per server
-- 8 TB NVMe + 32 TB SSD per server
-- 2x 25 Gbps NICs + 2x 10 Gbps NICs per server
+3-4x Physical servers
+- 2x CPU (8 cores each, 16 total per server)
+- 32 GB RAM per server
+- 1 TB SSD per server
+- 2x 10 Gbps NICs per server (or 4x 1 Gbps bonded)
 
-Plus: Dedicated storage (SAN, Ceph, or NAS cluster)
-- 100-500 TB capacity
-- High-speed backend network
-- Snapshot/replication capability
+Software: VMware ESXi (free) OR Proxmox (free) OR Hyper-V
+Cost: ~$20,000-30,000
 
-Software: VMware vSphere + vSAN OR Proxmox + Ceph
-Cost: ~$150,000-300,000
-
-Storage Calculation:
-- Base infrastructure: ~10 TB
-- Migration data: Server count × avg server size × 2
-- Example: 500 servers × 300 GB × 2 = 300 TB needed
-- File server data: Separate storage tier
+Storage Strategy:
+- Automation infrastructure: ~3-4 TB SSD total
+- Migration data: Use existing SAN/NAS/file servers
+- No need for dedicated migration storage
+- Leverage what you already have!
 
 Network Requirements:
-- 40/100 Gbps backend storage network
-- 10 Gbps frontend network
-- Dedicated migration network (optional but recommended)
+- 10 Gbps recommended (1 Gbps minimum works fine)
+- Existing network infrastructure
+- No dedicated migration network needed for most scenarios
 ```
 
 ---
