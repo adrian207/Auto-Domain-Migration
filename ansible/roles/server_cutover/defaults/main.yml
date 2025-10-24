@@ -1,0 +1,5 @@
+artifacts_base: "{{ playbook_dir }}/../artifacts"
+cutover_wave: "{{ wave_id | default('wave1') }}"
+pre_cutover_commands: "{{ hostvars[inventory_hostname].pre_cutover_commands | default([]) }}"
+post_cutover_commands: "{{ hostvars[inventory_hostname].post_cutover_commands | default([]) }}"
+final_sync: true

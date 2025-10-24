@@ -1,0 +1,2 @@
+artifacts_base: "{{ playbook_dir }}/../artifacts"
+replication_method: "{{ hostvars[inventory_hostname].replication_method | default('rsync') }}"

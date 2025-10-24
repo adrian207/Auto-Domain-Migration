@@ -1,0 +1,50 @@
+---
+- name: Ensure replication directory exists
+  ansible.builtin.file:
+    path: "{{ artifacts_base }}/replication"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+
+- name: Ensure replication sources defined
+  ansible.builtin.assert:
+    that: replication_sources | length > 0
+    fail_msg: "replication_sources must be defined for {{ inventory_hostname }}"
+  when: inventory_hostname in groups['source_servers']
+
+- name: Execute rsync replication
+  when:
+    - ansible_os_family != 'Windows'
+    - replication_method == 'rsync'
+    - inventory_hostname in groups['source_servers']
+  ansible.builtin.command: >-
+    rsync {{ rsync_options | join(' ') }} {{ item.path }} {{ item.target_host }}:{{ item.target_path }}
+  loop: "{{ replication_sources }}"
+  register: rsync_result
+  changed_when: rsync_result.rc == 0
+
+- name: Execute robocopy replication
+  when:
+    - ansible_os_family == 'Windows'
+    - replication_method == 'robocopy'
+    - inventory_hostname in groups['source_servers']
+  ansible.windows.win_shell: |
+    $options = ConvertFrom-Json '{{ robocopy_options | to_json }}'
+    & 'C:\ProgramData\ServerMigration\robocopy-wrapper.ps1' -Source '{{ item.path }}' -Destination '{{ item.target_path }}' -Options $options
+  loop: "{{ replication_sources }}"
+  register: robocopy_result
+
+- name: Record replication status
+  ansible.builtin.lineinfile:
+    path: "{{ artifacts_base }}/status.jsonl"
+    line: "{{ {'host': inventory_hostname, 'phase': 'replication', 'wave': replication_wave, 'timestamp': ansible_date_time.iso8601, 'method': replication_method} | to_json }}"
+    create: true
+  delegate_to: localhost
+
+- name: Store replication log
+  ansible.builtin.copy:
+    dest: "{{ artifacts_base }}/replication/{{ replication_wave }}-{{ inventory_hostname }}.log"
+    content: |
+      {{ (rsync_result.stdout if rsync_result is defined else '') + (robocopy_result.stdout if robocopy_result is defined else '') }}
+  delegate_to: localhost
+  when: rsync_result is defined or robocopy_result is defined

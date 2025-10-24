@@ -1,0 +1,48 @@
+---
+- name: Execute pre-cutover commands on source hosts (Linux)
+  when:
+    - inventory_hostname in groups['source_servers']
+    - pre_cutover_commands | length > 0
+    - ansible_os_family != 'Windows'
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ pre_cutover_commands }}"
+
+- name: Execute pre-cutover commands on source hosts (Windows)
+  when:
+    - inventory_hostname in groups['source_servers']
+    - pre_cutover_commands | length > 0
+    - ansible_os_family == 'Windows'
+  ansible.windows.win_shell: "{{ item }}"
+  loop: "{{ pre_cutover_commands }}"
+
+- name: Perform final sync before cutover
+  when:
+    - inventory_hostname in groups['source_servers']
+    - final_sync
+  ansible.builtin.include_role:
+    name: server_replication
+  vars:
+    replication_wave: "{{ cutover_wave }}"
+
+- name: Execute post-cutover commands on target hosts (Linux)
+  when:
+    - inventory_hostname in groups['target_servers']
+    - post_cutover_commands | length > 0
+    - ansible_os_family != 'Windows'
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ post_cutover_commands }}"
+
+- name: Execute post-cutover commands on target hosts (Windows)
+  when:
+    - inventory_hostname in groups['target_servers']
+    - post_cutover_commands | length > 0
+    - ansible_os_family == 'Windows'
+  ansible.windows.win_shell: "{{ item }}"
+  loop: "{{ post_cutover_commands }}"
+
+- name: Record cutover status
+  ansible.builtin.lineinfile:
+    path: "{{ artifacts_base }}/status.jsonl"
+    line: "{{ {'host': inventory_hostname, 'phase': 'cutover', 'wave': cutover_wave, 'timestamp': ansible_date_time.iso8601} | to_json }}"
+    create: true
+  delegate_to: localhost

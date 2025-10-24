@@ -1,10 +1,10 @@
 ---
-- name: Server migration prerequisites
+- name: Perform server cutover
   hosts: source_servers:target_servers
   gather_facts: true
   vars:
     wave_id: "{{ wave_id | default('wave1') }}"
   tasks:
-    - name: Apply server prerequisites
+    - name: Execute cutover actions
       ansible.builtin.include_role:
-        name: server_prerequisites
+        name: server_cutover

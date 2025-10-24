@@ -1,0 +1,12 @@
+wave_id: default-wave
+replication_method: rsync
+rsync_options:
+  - "--archive"
+  - "--delete"
+  - "--partial"
+pre_cutover_commands: []
+post_cutover_commands: []
+snapshot_hooks:
+  create: []
+  revert: []
+services_to_stop: []

@@ -1,0 +1,85 @@
+---
+- name: Ensure validation directory exists
+  ansible.builtin.file:
+    path: "{{ artifacts_base }}/validation"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+
+- name: Validate listening ports
+  delegate_to: localhost
+  ansible.builtin.wait_for:
+    host: "{{ (item.host if item is mapping else hostvars[inventory_hostname].ansible_host | default(inventory_hostname)) }}"
+    port: "{{ (item.port if item is mapping else item) | int }}"
+    timeout: "{{ (item.timeout if item is mapping else 10) | int }}"
+  loop: "{{ validation_checks.ports | default([]) }}"
+  register: port_checks
+  when: validation_checks.ports is defined
+
+- name: Execute validation commands on Linux
+  when:
+    - ansible_os_family != 'Windows'
+    - validation_checks.commands is defined
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ validation_checks.commands }}"
+  register: command_checks
+  failed_when: false
+
+- name: Execute validation commands on Windows
+  when:
+    - ansible_os_family == 'Windows'
+    - validation_checks.commands is defined
+  ansible.windows.win_shell: "{{ item }}"
+  loop: "{{ validation_checks.commands }}"
+  register: command_checks
+  failed_when: false
+
+- name: Validate HTTP endpoints
+  delegate_to: localhost
+  ansible.builtin.uri:
+    url: "{{ item.url if item is mapping else item }}"
+    method: "{{ item.method | default('GET') }}"
+    status_code: "{{ item.status | default(200) }}"
+  loop: "{{ validation_checks.http_endpoints | default([]) }}"
+  register: http_checks
+  failed_when: false
+
+- name: Initialize validation summary
+  ansible.builtin.set_fact:
+    validation_summary:
+      host: "{{ inventory_hostname }}"
+      wave: "{{ validation_wave }}"
+      ports: []
+      commands: []
+      http: []
+
+- name: Append port results
+  ansible.builtin.set_fact:
+    validation_summary: "{{ validation_summary | combine({'ports': validation_summary.ports + [{'item': item.item, 'failed': item.failed | default(false), 'msg': item.msg | default(''), 'elapsed': item.elapsed | default(0)}]}) }}"
+  loop: "{{ port_checks.results | default([]) }}"
+  when: port_checks is defined
+
+- name: Append command results
+  ansible.builtin.set_fact:
+    validation_summary: "{{ validation_summary | combine({'commands': validation_summary.commands + [{'item': item.item, 'rc': item.rc | default(0), 'stdout': item.stdout | default(''), 'stderr': item.stderr | default('')}]}) }}"
+  loop: "{{ command_checks.results | default([]) }}"
+  when: command_checks is defined
+
+- name: Append HTTP results
+  ansible.builtin.set_fact:
+    validation_summary: "{{ validation_summary | combine({'http': validation_summary.http + [{'item': item.item, 'status': item.status | default(0), 'failed': item.failed | default(false)}]}) }}"
+  loop: "{{ http_checks.results | default([]) }}"
+  when: http_checks is defined
+
+- name: Write validation summary to artifact
+  ansible.builtin.copy:
+    dest: "{{ artifacts_base }}/validation/{{ validation_wave }}-{{ inventory_hostname }}.yml"
+    content: "{{ validation_summary | to_nice_yaml }}"
+  delegate_to: localhost
+
+- name: Record validation status
+  ansible.builtin.lineinfile:
+    path: "{{ artifacts_base }}/status.jsonl"
+    line: "{{ validation_summary | combine({'phase': 'validation', 'timestamp': ansible_date_time.iso8601}) | to_json }}"
+    create: true
+  delegate_to: localhost

@@ -1,0 +1,7 @@
+wave_id: default-wave
+mount_points: []
+services_to_start: []
+validation_checks:
+  ports: []
+  commands: []
+  http_endpoints: []

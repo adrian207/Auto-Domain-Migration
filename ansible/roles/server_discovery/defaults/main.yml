@@ -1,0 +1,2 @@
+artifacts_base: "{{ playbook_dir }}/../artifacts"
+discovery_wave: "{{ wave_id | default('wave1') }}"

@@ -1,0 +1,3 @@
+artifacts_base: "{{ playbook_dir }}/../artifacts"
+rollback_wave: "{{ wave_id | default('wave1') }}"
+rollback_commands: "{{ hostvars[inventory_hostname].rollback_commands | default([]) }}"

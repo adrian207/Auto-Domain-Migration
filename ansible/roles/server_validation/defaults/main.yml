@@ -1,0 +1,3 @@
+artifacts_base: "{{ playbook_dir }}/../artifacts"
+validation_wave: "{{ wave_id | default('wave1') }}"
+validation_checks: "{{ hostvars[inventory_hostname].validation_checks | default({}) }}"

@@ -1,0 +1,98 @@
+---
+- name: Ensure discovery output directory exists
+  ansible.builtin.file:
+    path: "{{ artifacts_base }}/discovery/{{ discovery_wave }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+
+- name: Gather facts
+  ansible.builtin.setup:
+    gather_subset:
+      - hardware
+      - network
+      - virtual
+
+- name: Collect running services on Windows
+  when: ansible_os_family == 'Windows'
+  ansible.windows.win_shell: |
+    Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, DisplayName, Status | ConvertTo-Json
+  register: running_services
+
+- name: Collect running services on Linux
+  when: ansible_os_family != 'Windows'
+  ansible.builtin.shell: |
+    systemctl list-units --type=service --state=running --no-legend | awk '{print $1}'
+  register: running_services
+
+- name: Detect listening ports on Windows
+  when: ansible_os_family == 'Windows'
+  ansible.windows.win_shell: netstat -ano
+  register: listening_ports_raw
+
+- name: Detect listening ports on Linux
+  when: ansible_os_family != 'Windows'
+  ansible.builtin.shell: ss -tulpn
+  register: listening_ports_raw
+
+- name: Set listening ports fact
+  ansible.builtin.set_fact:
+    listening_ports: "{{ listening_ports_raw.stdout | default('') }}"
+
+- name: Detect mounted filesystems on Windows
+  when: ansible_os_family == 'Windows'
+  ansible.windows.win_shell: Get-Volume | ConvertTo-Json
+  register: filesystem_info_raw
+
+- name: Detect mounted filesystems on Linux
+  when: ansible_os_family != 'Windows'
+  ansible.builtin.shell: lsblk --json
+  register: filesystem_info_raw
+
+- name: Set filesystem info fact
+  ansible.builtin.set_fact:
+    filesystem_info: "{{ filesystem_info_raw.stdout | default('') }}"
+
+- name: Capture database processes on Windows (best effort)
+  when: ansible_os_family == 'Windows'
+  ansible.windows.win_shell: >-
+    Get-Process -Name sqlservr,postgres,mysqld -ErrorAction SilentlyContinue |
+      Select-Object Name,Id,Path |
+      ConvertTo-Json
+  register: database_processes_raw
+  failed_when: false
+
+- name: Capture database processes on Linux (best effort)
+  when: ansible_os_family != 'Windows'
+  ansible.builtin.shell: ps -eo pid,comm,args | egrep "(postgres|mysqld|sqlservr|oracle)"
+  register: database_processes_raw
+  failed_when: false
+
+- name: Set database processes fact
+  ansible.builtin.set_fact:
+    database_processes: "{{ database_processes_raw.stdout | default('') }}"
+
+- name: Build discovery payload
+  ansible.builtin.set_fact:
+    discovery_payload:
+      host: "{{ inventory_hostname }}"
+      wave: "{{ discovery_wave }}"
+      facts: "{{ ansible_facts }}"
+      running_services: "{{ running_services.stdout | default(running_services.stdout_lines) }}"
+      listening_ports: "{{ listening_ports }}"
+      filesystem_info: "{{ filesystem_info }}"
+      database_processes: "{{ database_processes }}"
+      collected_at: "{{ ansible_date_time.iso8601 }}"
+
+- name: Write discovery payload to file
+  ansible.builtin.copy:
+    content: "{{ discovery_payload | to_nice_json }}"
+    dest: "{{ artifacts_base }}/discovery/{{ discovery_wave }}/{{ inventory_hostname }}.json"
+  delegate_to: localhost
+
+- name: Append to status log
+  ansible.builtin.lineinfile:
+    path: "{{ artifacts_base }}/status.jsonl"
+    line: "{{ discovery_payload | combine({'phase': 'discovery'}) | to_json }}"
+    create: true
+  delegate_to: localhost

@@ -1,10 +1,10 @@
 ---
-- name: Server discovery
+- name: Start replication jobs
   hosts: source_servers
-  gather_facts: false
+  gather_facts: true
   vars:
     wave_id: "{{ wave_id | default('wave1') }}"
   tasks:
-    - name: Run discovery role
+    - name: Execute replication role
       ansible.builtin.include_role:
-        name: server_discovery
+        name: server_replication

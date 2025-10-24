@@ -1,0 +1,37 @@
+---
+- name: Validate control connectivity
+  ansible.builtin.ping:
+  register: ping_result
+  failed_when: ping_result is failed
+
+- name: Install Rsync on Linux hosts
+  when: ansible_os_family != 'Windows' and replication_method == 'rsync'
+  ansible.builtin.package:
+    name: rsync
+    state: present
+
+- name: Ensure Robocopy directory exists
+  when: ansible_os_family == 'Windows' and replication_method == 'robocopy'
+  ansible.windows.win_file:
+    path: C:\\ProgramData\\ServerMigration
+    state: directory
+
+- name: Copy Robocopy wrapper for Windows hosts
+  when: ansible_os_family == 'Windows' and replication_method == 'robocopy'
+  ansible.windows.win_copy:
+    src: "{{ role_path }}/../../files/robocopy-wrapper.ps1"
+    dest: C:\\ProgramData\\ServerMigration\\robocopy-wrapper.ps1
+
+- name: Ensure artifacts directory exists
+  ansible.builtin.file:
+    path: "{{ artifacts_base }}/replication"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+
+- name: Record prerequisite status
+  ansible.builtin.lineinfile:
+    path: "{{ artifacts_base }}/status.jsonl"
+    line: "{{ {'host': inventory_hostname, 'phase': 'prerequisites', 'replication_method': replication_method, 'timestamp': ansible_date_time.iso8601} | to_json }}"
+    create: true
+  delegate_to: localhost

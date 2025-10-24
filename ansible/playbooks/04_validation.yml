@@ -1,0 +1,10 @@
+---
+- name: Validate migrated servers
+  hosts: target_servers
+  gather_facts: true
+  vars:
+    wave_id: "{{ wave_id | default('wave1') }}"
+  tasks:
+    - name: Execute validation role
+      ansible.builtin.include_role:
+        name: server_validation

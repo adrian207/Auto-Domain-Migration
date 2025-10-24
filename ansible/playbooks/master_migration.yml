@@ -1,68 +1,30 @@
 ---
-# Master Migration Playbook
-# Purpose: Execute complete ADMT migration workflow
-# Usage: ansible-playbook -i inventory/hosts.ini playbooks/master_migration.yml -e "migration_wave=1"
-# WARNING: This runs all phases sequentially - use with caution in production
-
-- name: Phase 0 - Discovery
-  ansible.builtin.import_playbook: 00_discovery.yml
-  tags:
-    - discovery
-    - phase0
-
-- name: Phase 1 - Prerequisites Setup
-  ansible.builtin.import_playbook: 01_prerequisites.yml
-  tags:
-    - prerequisites
-    - phase1
-
-- name: Phase 2 - Trust Configuration
-  ansible.builtin.import_playbook: 02_trust_configuration.yml
-  tags:
-    - trust
-    - phase2
-
-- name: Phase 3 - USMT Backup
-  ansible.builtin.import_playbook: 03_usmt_backup.yml
-  when: backup_workstations | default(true)
-  tags:
-    - usmt
-    - backup
-    - phase3
-
-- name: Phase 4 - Migration Execution
-  ansible.builtin.import_playbook: 04_migration.yml
-  tags:
-    - migration
-    - phase4
-
-- name: Phase 5 - Post-Migration Validation
-  ansible.builtin.import_playbook: 05_validation.yml
-  tags:
-    - validation
-    - phase5
-
-- name: Migration Complete
+- name: Full server migration workflow
   hosts: localhost
-  gather_facts: no
-  
+  gather_facts: false
+  vars:
+    wave_id: "{{ wave_id | default('wave1') }}"
   tasks:
-    - name: Display completion message
-      ansible.builtin.debug:
-        msg: |
-          ========================================
-          🎉 Migration Wave {{ migration_wave | default(1) }} Complete!
-          ========================================
-          
-          All phases executed successfully:
-          ✅ Discovery
-          ✅ Prerequisites
-          ✅ Trust Configuration
-          ✅ USMT Backup
-          ✅ Migration
-          ✅ Validation
-          
-          Review logs and validation reports before proceeding
-          with the next wave or completing the migration.
-          ========================================
+    - name: Run discovery phase
+      ansible.builtin.include_playbook: 00_discovery.yml
 
+    - name: Run prerequisites phase
+      ansible.builtin.include_playbook: 01_prerequisites.yml
+
+    - name: Start replication
+      ansible.builtin.include_playbook: 02_replication.yml
+
+    - name: Await operator approval
+      ansible.builtin.pause:
+        prompt: |
+          Wave {{ wave_id }} replication complete. Press Enter to begin cutover or Ctrl+C to abort.
+
+    - name: Execute cutover
+      ansible.builtin.include_playbook: 03_cutover.yml
+
+    - name: Validate workloads
+      ansible.builtin.include_playbook: 04_validation.yml
+
+    - name: Review validation results
+      ansible.builtin.debug:
+        msg: "Validation artifacts stored under artifacts/validation/{{ wave_id }}-*.yml"
