@@ -20,12 +20,12 @@ resource "azurerm_kubernetes_cluster" "main" {
     vnet_subnet_id  = azurerm_subnet.aks.id
     os_disk_size_gb = 128
     os_disk_type    = "Managed"
-    
+
     # Only system pods on these nodes
     node_labels = {
       "role" = "system"
     }
-    
+
     upgrade_settings {
       max_surge = "33%"
     }
@@ -42,13 +42,13 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   # Network profile
   network_profile {
-    network_plugin     = var.aks_network_plugin
-    network_policy     = var.aks_network_policy
-    load_balancer_sku  = "standard"
-    outbound_type      = "loadBalancer"
-    service_cidr       = var.service_cidr
-    dns_service_ip     = var.dns_service_ip
-    
+    network_plugin    = var.aks_network_plugin
+    network_policy    = var.aks_network_policy
+    load_balancer_sku = "standard"
+    outbound_type     = "loadBalancer"
+    service_cidr      = var.service_cidr
+    dns_service_ip    = var.dns_service_ip
+
     load_balancer_profile {
       managed_outbound_ip_count = 2
     }
@@ -57,7 +57,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Azure AD integration
   azure_active_directory_role_based_access_control {
     azure_rbac_enabled     = var.enable_azure_ad_rbac
-    admin_group_object_ids = []  # Add Azure AD group IDs for cluster admins
+    admin_group_object_ids = [] # Add Azure AD group IDs for cluster admins
   }
 
   # API server access profile
@@ -123,17 +123,17 @@ resource "azurerm_kubernetes_cluster_node_pool" "workers" {
   vnet_subnet_id        = azurerm_subnet.aks.id
   os_disk_size_gb       = 256
   os_disk_type          = "Managed"
-  
+
   # Labels for workload scheduling
   node_labels = {
     "role"     = "worker"
     "workload" = "migration"
   }
-  
+
   upgrade_settings {
     max_surge = "33%"
   }
-  
+
   tags = merge(local.common_tags, {
     NodePool = "workers"
   })
@@ -145,7 +145,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "workers" {
 
 # Assign AKS cluster identity to pull images from ACR (if needed)
 resource "azurerm_role_assignment" "aks_acr_pull" {
-  count                = 0  # Enable if using Azure Container Registry
+  count                = 0 # Enable if using Azure Container Registry
   scope                = azurerm_resource_group.main.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id

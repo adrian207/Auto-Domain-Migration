@@ -10,13 +10,13 @@ resource "azurerm_storage_account" "file_sync_storage" {
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
-  account_replication_type = "GRS"  # Geo-redundant for enterprise
+  account_replication_type = "GRS" # Geo-redundant for enterprise
   account_kind             = "StorageV2"
 
   network_rules {
     default_action = "Deny"
     virtual_network_subnet_ids = [
-      azurerm_subnet.domain_controllers.id
+      azurerm_subnet.services.id
     ]
     bypass = ["AzureServices"]
   }
@@ -27,10 +27,10 @@ resource "azurerm_storage_account" "file_sync_storage" {
 # Azure File Shares for each department
 resource "azurerm_storage_share" "department_shares" {
   for_each = toset(["hr", "finance", "engineering", "sales", "marketing", "it"])
-  
+
   name                 = each.key
-  storage_account_id   = azurerm_storage_account.file_sync_storage.id
-  quota                = 2048  # 2TB per share
+  storage_account_name = azurerm_storage_account.file_sync_storage.name
+  quota                = 2048 # 2TB per share
   enabled_protocol     = "SMB"
 }
 
@@ -46,7 +46,7 @@ resource "azurerm_storage_sync" "main" {
 # Sync Groups for each department
 resource "azurerm_storage_sync_group" "department_sync" {
   for_each = toset(["hr", "finance", "engineering", "sales", "marketing", "it"])
-  
+
   name            = "${each.key}-sync-group"
   storage_sync_id = azurerm_storage_sync.main.id
 }
@@ -54,7 +54,7 @@ resource "azurerm_storage_sync_group" "department_sync" {
 # Cloud Endpoints (Azure Files)
 resource "azurerm_storage_sync_cloud_endpoint" "department_cloud" {
   for_each = toset(["hr", "finance", "engineering", "sales", "marketing", "it"])
-  
+
   name                  = "${each.key}-cloud-endpoint"
   storage_sync_group_id = azurerm_storage_sync_group.department_sync[each.key].id
   file_share_name       = azurerm_storage_share.department_shares[each.key].name
@@ -66,14 +66,14 @@ resource "azurerm_storage_sync_cloud_endpoint" "department_cloud" {
 # =============================================================================
 
 resource "azurerm_windows_virtual_machine" "source_fileserver" {
-  count               = 2  # 2-node cluster
+  count               = 2 # 2-node cluster
   name                = "${var.resource_prefix}-src-fs-${count.index + 1}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D8s_v5"  # 8 vCPU, 32GB RAM
+  size                = "Standard_D8s_v5" # 8 vCPU, 32GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
-  zone                = tostring(count.index + 1)  # Availability zones
+  zone                = tostring(count.index + 1) # Availability zones
 
   network_interface_ids = [
     azurerm_network_interface.source_fileserver[count.index].id
@@ -107,7 +107,7 @@ resource "azurerm_managed_disk" "source_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 4096  # 4TB per node
+  disk_size_gb         = 4096 # 4TB per node
   zone                 = tostring(count.index + 1)
 
   tags = local.common_tags
@@ -129,9 +129,9 @@ resource "azurerm_network_interface" "source_fileserver" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.domain_controllers.id
+    subnet_id                     = azurerm_subnet.services.id
     private_ip_address_allocation = "Static"
-    private_ip_address            = cidrhost(azurerm_subnet.domain_controllers.address_prefixes[0], 20 + count.index)
+    private_ip_address            = cidrhost(azurerm_subnet.services.address_prefixes[0], 20 + count.index)
   }
 
   tags = local.common_tags
@@ -142,14 +142,14 @@ resource "azurerm_network_interface" "source_fileserver" {
 # =============================================================================
 
 resource "azurerm_windows_virtual_machine" "target_fileserver" {
-  count               = 2  # 2-node cluster
+  count               = 2 # 2-node cluster
   name                = "${var.resource_prefix}-tgt-fs-${count.index + 1}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D8s_v5"  # 8 vCPU, 32GB RAM
+  size                = "Standard_D8s_v5" # 8 vCPU, 32GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
-  zone                = tostring(count.index + 1)  # Availability zones
+  zone                = tostring(count.index + 1) # Availability zones
 
   network_interface_ids = [
     azurerm_network_interface.target_fileserver[count.index].id
@@ -183,7 +183,7 @@ resource "azurerm_managed_disk" "target_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Premium_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 4096  # 4TB per node
+  disk_size_gb         = 4096 # 4TB per node
   zone                 = tostring(count.index + 1)
 
   tags = local.common_tags
@@ -205,9 +205,9 @@ resource "azurerm_network_interface" "target_fileserver" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.domain_controllers.id
+    subnet_id                     = azurerm_subnet.services.id
     private_ip_address_allocation = "Static"
-    private_ip_address            = cidrhost(azurerm_subnet.domain_controllers.address_prefixes[0], 30 + count.index)
+    private_ip_address            = cidrhost(azurerm_subnet.services.address_prefixes[0], 30 + count.index)
   }
 
   tags = local.common_tags
@@ -218,11 +218,11 @@ resource "azurerm_network_interface" "target_fileserver" {
 # =============================================================================
 
 resource "azurerm_windows_virtual_machine" "sms_orchestrator" {
-  count               = 2  # Redundant orchestrators
+  count               = 2 # Redundant orchestrators
   name                = "${var.resource_prefix}-sms-orch-${count.index + 1}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_D4s_v5"  # 4 vCPU, 16GB RAM
+  size                = "Standard_D4s_v5" # 4 vCPU, 16GB RAM
   admin_username      = var.admin_username
   admin_password      = var.admin_password
   zone                = tostring(count.index + 1)
@@ -260,9 +260,9 @@ resource "azurerm_network_interface" "sms_orchestrator" {
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.domain_controllers.id
+    subnet_id                     = azurerm_subnet.services.id
     private_ip_address_allocation = "Static"
-    private_ip_address            = cidrhost(azurerm_subnet.domain_controllers.address_prefixes[0], 40 + count.index)
+    private_ip_address            = cidrhost(azurerm_subnet.services.address_prefixes[0], 40 + count.index)
   }
 
   tags = local.common_tags
@@ -274,7 +274,7 @@ resource "azurerm_network_interface" "sms_orchestrator" {
 
 resource "azurerm_lb" "file_cluster" {
   for_each = toset(["source", "target"])
-  
+
   name                = "${var.resource_prefix}-${each.key}-fs-lb"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
@@ -282,9 +282,9 @@ resource "azurerm_lb" "file_cluster" {
 
   frontend_ip_configuration {
     name                          = "FilesClusterIP"
-    subnet_id                     = azurerm_subnet.domain_controllers.id
+    subnet_id                     = azurerm_subnet.services.id
     private_ip_address_allocation = "Static"
-    private_ip_address            = cidrhost(azurerm_subnet.domain_controllers.address_prefixes[0], each.key == "source" ? 25 : 35)
+    private_ip_address            = cidrhost(azurerm_subnet.services.address_prefixes[0], each.key == "source" ? 25 : 35)
   }
 
   tags = local.common_tags
@@ -293,7 +293,7 @@ resource "azurerm_lb" "file_cluster" {
 # Backend pools
 resource "azurerm_lb_backend_address_pool" "file_cluster" {
   for_each = toset(["source", "target"])
-  
+
   name            = "${each.key}-fs-pool"
   loadbalancer_id = azurerm_lb.file_cluster[each.key].id
 }
@@ -301,11 +301,11 @@ resource "azurerm_lb_backend_address_pool" "file_cluster" {
 # Health probe
 resource "azurerm_lb_probe" "file_cluster" {
   for_each = toset(["source", "target"])
-  
-  name            = "smb-health"
-  loadbalancer_id = azurerm_lb.file_cluster[each.key].id
-  protocol        = "Tcp"
-  port            = 445
+
+  name                = "smb-health"
+  loadbalancer_id     = azurerm_lb.file_cluster[each.key].id
+  protocol            = "Tcp"
+  port                = 445
   interval_in_seconds = 5
   number_of_probes    = 2
 }
@@ -313,7 +313,7 @@ resource "azurerm_lb_probe" "file_cluster" {
 # Load balancing rule for SMB
 resource "azurerm_lb_rule" "file_cluster_smb" {
   for_each = toset(["source", "target"])
-  
+
   name                           = "smb-rule"
   loadbalancer_id                = azurerm_lb.file_cluster[each.key].id
   protocol                       = "Tcp"

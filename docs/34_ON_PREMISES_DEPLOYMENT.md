@@ -161,67 +161,102 @@ NO AZURE │ NO AWS │ NO GCP │ NO CLOUD
 
 ## 🚀 Deployment Tiers (On-Premises)
 
-### Tier 1: Basic (50-100 users)
+### Tier 1: Small (10-50 servers)
+
+**Target Migration Size:**
+- 10-50 Windows/Linux servers
+- 5-20 TB file server data
+- 2 TB database capacity
+- Single datacenter
 
 **Hardware Requirements:**
 - 6 VMs total
-- 24 vCPUs total
-- 64 GB RAM total
-- 500 GB storage
+- 32 vCPUs total
+- 80 GB RAM total
+- 1 TB storage (+ migration data capacity)
 
 **Components:**
 ```
-2x Domain Controllers (source/target) - 2 vCPU, 4 GB RAM each
-2x File Servers (source/target)       - 2 vCPU, 4 GB RAM each
-1x Automation VM (AWX + Ansible)      - 4 vCPU, 16 GB RAM
+2x Domain Controllers (source/target) - 4 vCPU, 8 GB RAM each
+2x File Servers (source/target)       - 4 vCPU, 8 GB RAM each (+ data disks)
+1x Automation VM (AWX + Ansible)      - 8 vCPU, 24 GB RAM
 1x Monitoring VM (Prometheus/Grafana) - 4 vCPU, 8 GB RAM
 ```
+
+**Migration Capacity:**
+- ~5 servers migrated per day
+- 2-10 day migration window
+- Single automation controller
 
 **Cost:** Capital expense only (hardware you already own)
 
 ---
 
-### Tier 2: Production (500-1,000 users)
+### Tier 2: Medium (50-200 servers)
+
+**Target Migration Size:**
+- 50-200 Windows/Linux servers
+- 20-100 TB file server data
+- 10 TB database capacity
+- Multi-site support
 
 **Hardware Requirements:**
-- 10-12 VMs total
-- 80 vCPUs total
-- 256 GB RAM total
-- 2 TB storage
+- 12 VMs total
+- 96 vCPUs total
+- 320 GB RAM total
+- 5 TB storage (+ migration data capacity)
 
 **Components:**
 ```
-2x Domain Controllers (HA)           - 4 vCPU, 8 GB RAM each
-2x File Servers (HA with clustering) - 8 vCPU, 16 GB RAM each
-2x AWX VMs (HA)                      - 4 vCPU, 16 GB RAM each
-2x PostgreSQL (HA with replication)  - 4 vCPU, 16 GB RAM each
-2x Prometheus/Grafana (HA)           - 4 vCPU, 8 GB RAM each
-1x HashiCorp Vault                   - 2 vCPU, 4 GB RAM
+2x Domain Controllers (HA)           - 4 vCPU, 12 GB RAM each
+4x File Servers (HA with clustering) - 8 vCPU, 24 GB RAM each (+ data disks)
+2x AWX VMs (HA)                      - 8 vCPU, 32 GB RAM each
+2x PostgreSQL (HA with replication)  - 8 vCPU, 24 GB RAM each
+2x Prometheus/Grafana (HA)           - 4 vCPU, 12 GB RAM each
+1x HashiCorp Vault                   - 4 vCPU, 8 GB RAM
 1x Guacamole bastion                 - 2 vCPU, 4 GB RAM
 ```
+
+**Migration Capacity:**
+- ~15-20 servers migrated per day
+- Parallel migration batches
+- Automated rollback capability
 
 **Cost:** Hardware depreciation only
 
 ---
 
-### Tier 3: Enterprise (3,000-5,000 users)
+### Tier 3: Large (200-1,000 servers)
+
+**Target Migration Size:**
+- 200-1,000 Windows/Linux servers
+- 100-500 TB file server data
+- 50 TB database capacity
+- Multi-datacenter, global operations
 
 **Hardware Requirements:**
 - 3-node Kubernetes cluster
-- 20+ VMs total
-- 200+ vCPUs total
-- 1 TB RAM total
-- 10 TB storage
+- 25+ VMs total
+- 240+ vCPUs total
+- 1.5 TB RAM total
+- 20 TB storage (+ migration data capacity)
 
 **Components:**
 ```
-3x Kubernetes nodes                  - 16 vCPU, 64 GB RAM each
-2x Domain Controllers per domain     - 4 vCPU, 8 GB RAM each
-3x PostgreSQL HA cluster             - 8 vCPU, 16 GB RAM each
-3x HashiCorp Vault HA                - 4 vCPU, 8 GB RAM each
-6x MinIO nodes (object storage)      - 4 vCPU, 8 GB RAM each
-2x HAProxy load balancers            - 2 vCPU, 4 GB RAM each
+3x Kubernetes nodes                  - 16 vCPU, 96 GB RAM each
+4x Domain Controllers (2 per domain) - 4 vCPU, 12 GB RAM each
+6x File Server Cluster (HA)          - 8 vCPU, 32 GB RAM each (+ data disks)
+3x PostgreSQL HA cluster             - 8 vCPU, 24 GB RAM each
+3x HashiCorp Vault HA                - 4 vCPU, 12 GB RAM each
+6x MinIO nodes (object storage)      - 8 vCPU, 16 GB RAM each
+2x HAProxy load balancers            - 4 vCPU, 8 GB RAM each
 ```
+
+**Migration Capacity:**
+- ~50+ servers migrated per day
+- Wave-based migration planning
+- Multi-region orchestration
+- Automated testing & validation
 
 **Cost:** Significant hardware, but no recurring cloud costs
 
@@ -452,20 +487,27 @@ ansible-playbook playbooks/05_validation.yml
 
 ## 💰 Cost Comparison
 
-### On-Premises vs Cloud
+### On-Premises vs Cloud (Server Migration Workload)
 
 | Aspect | On-Premises | Cloud (Azure) |
 |--------|-------------|---------------|
-| **Initial Cost** | Hardware purchase ($10k-50k) | $0 |
-| **Monthly Cost** | $0 (power/cooling only) | $500-3,000 |
-| **Year 1 Total** | $10k-50k | $6k-36k |
-| **Year 3 Total** | $10k-50k | $18k-108k |
+| **Initial Cost** | Hardware purchase ($15k-225k) | $0 |
+| **Monthly Cost** | $100-500 (power/cooling) | $800-5,000 |
+| **Year 1 Total** | $15k-231k | $9.6k-60k |
+| **Year 3 Total** | $18.6k-243k | $28.8k-180k |
+| **Year 5 Total** | $21.2k-255k | $48k-300k |
 | **Ownership** | You own hardware | Rent only |
 | **Data Location** | Your data center | Cloud provider |
 | **Internet Required** | No (can be air-gapped) | Yes |
+| **Bandwidth Cost** | $0 (internal network) | High for large file servers |
 | **Compliance** | Easier (local control) | Complex |
 
-**Break-even:** ~12-18 months for most scenarios
+**Break-even:** 
+- Tier 1 (10-50 servers): ~18 months
+- Tier 2 (50-200 servers): ~12 months
+- Tier 3 (200-1,000 servers): ~8-10 months
+
+**Key Factor:** On-premises becomes more cost-effective at scale, especially for large file server migrations where cloud egress fees are significant.
 
 ---
 
@@ -497,50 +539,79 @@ ansible-playbook playbooks/05_validation.yml
 
 ## 📊 Hardware Sizing Guide
 
-### Tier 1 (50-100 users)
+### Tier 1 (10-50 servers)
 
-**Minimum Server:**
+**Minimum Infrastructure:**
 ```
-1x Physical server
+2x Physical servers (for redundancy)
 - 2x CPU (12 cores each, 24 total)
-- 128 GB RAM
-- 2 TB SSD storage
-- 4x 1 Gbps NICs
+- 128 GB RAM per server
+- 2 TB NVMe SSD + 8 TB HDD storage per server
+- 4x 1 Gbps NICs (or 2x 10 Gbps)
 
 Software: VMware ESXi Free or Proxmox
-Cost: ~$5,000-10,000
+Cost: ~$10,000-20,000
+
+Storage Calculation:
+- Base OS/Apps: ~500 GB
+- Migration data: Server count × avg server size × 2 (source + target)
+- Example: 30 servers × 100 GB × 2 = 6 TB needed
 ```
 
 ---
 
-### Tier 2 (500-1,000 users)
+### Tier 2 (50-200 servers)
 
 **Recommended Cluster:**
 ```
-3x Physical servers
-- 2x CPU (16 cores each, 32 per server)
-- 256 GB RAM per server
-- 4 TB SSD + 8 TB HDD per server
+3-4x Physical servers
+- 2x CPU (20 cores each, 40 per server)
+- 384 GB RAM per server
+- 4 TB NVMe + 20 TB HDD per server
 - 4x 10 Gbps NICs per server
 
 Software: VMware vSphere or Proxmox Cluster
-Cost: ~$30,000-50,000
+Cost: ~$50,000-80,000
+
+Storage Calculation:
+- Base infrastructure: ~2 TB
+- Migration data: Server count × avg server size × 2
+- Example: 150 servers × 200 GB × 2 = 60 TB needed
+- File server data: Add actual capacity needed
+
+Recommended: Separate storage array (NAS/SAN) for file server data
 ```
 
 ---
 
-### Tier 3 (3,000-5,000 users)
+### Tier 3 (200-1,000 servers)
 
 **Enterprise Cluster:**
 ```
-6x Physical servers (Kubernetes nodes)
-- 2x CPU (24 cores each, 48 per server)
-- 512 GB RAM per server
-- 8 TB NVMe + 16 TB SSD per server
-- 2x 25 Gbps NICs per server
+6-8x Physical servers (Kubernetes + storage)
+- 2x CPU (28 cores each, 56 per server)
+- 768 GB RAM per server
+- 8 TB NVMe + 32 TB SSD per server
+- 2x 25 Gbps NICs + 2x 10 Gbps NICs per server
 
-Plus: Shared storage (SAN or Ceph)
-Cost: ~$100,000-200,000
+Plus: Dedicated storage (SAN, Ceph, or NAS cluster)
+- 100-500 TB capacity
+- High-speed backend network
+- Snapshot/replication capability
+
+Software: VMware vSphere + vSAN OR Proxmox + Ceph
+Cost: ~$150,000-300,000
+
+Storage Calculation:
+- Base infrastructure: ~10 TB
+- Migration data: Server count × avg server size × 2
+- Example: 500 servers × 300 GB × 2 = 300 TB needed
+- File server data: Separate storage tier
+
+Network Requirements:
+- 40/100 Gbps backend storage network
+- 10 Gbps frontend network
+- Dedicated migration network (optional but recommended)
 ```
 
 ---
@@ -817,10 +888,12 @@ ansible-playbook playbooks/master_migration.yml
 
 ### Cost
 
-- **Tier 1:** ~$10k hardware (one-time)
-- **Tier 2:** ~$40k hardware (one-time)
-- **Tier 3:** ~$150k hardware (one-time)
-- **Ongoing:** Power, cooling, maintenance only
+- **Tier 1 (10-50 servers):** ~$15k hardware (one-time)
+- **Tier 2 (50-200 servers):** ~$65k hardware (one-time)
+- **Tier 3 (200-1,000 servers):** ~$225k hardware (one-time)
+- **Ongoing:** Power (~$100-500/month), cooling, maintenance only
+
+**ROI:** Hardware pays for itself in 12-24 months vs cloud costs
 
 ### Break-Even
 

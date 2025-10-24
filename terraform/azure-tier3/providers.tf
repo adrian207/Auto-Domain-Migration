@@ -9,22 +9,22 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.80"
     }
-    
+
     kubernetes = {
       source  = "hashicorp/kubernetes"
       version = "~> 2.24"
     }
-    
+
     helm = {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
-    
+
     kubectl = {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
-    
+
     random = {
       source  = "hashicorp/random"
       version = "~> 3.5"
