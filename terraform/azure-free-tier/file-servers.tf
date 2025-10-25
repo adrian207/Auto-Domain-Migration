@@ -9,7 +9,7 @@ resource "azurerm_windows_virtual_machine" "source_fileserver" {
   name                = "${local.resource_prefix}-src-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_B1ms"  # 1 vCPU, 2GB RAM - $15/month
+  size                = "Standard_B1ms" # 1 vCPU, 2GB RAM - $15/month
   admin_username      = var.admin_username
   admin_password      = var.admin_password
 
@@ -49,7 +49,7 @@ resource "azurerm_managed_disk" "source_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 1024  # 1TB for test data
+  disk_size_gb         = 1024 # 1TB for test data
 
   tags = local.common_tags
 }
@@ -84,7 +84,7 @@ resource "azurerm_windows_virtual_machine" "target_fileserver" {
   name                = "${local.resource_prefix}-tgt-fs"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  size                = "Standard_B1ms"  # 1 vCPU, 2GB RAM - $15/month
+  size                = "Standard_B1ms" # 1 vCPU, 2GB RAM - $15/month
   admin_username      = var.admin_username
   admin_password      = var.admin_password
 
@@ -124,7 +124,7 @@ resource "azurerm_managed_disk" "target_fileserver_data" {
   resource_group_name  = azurerm_resource_group.main.name
   storage_account_type = "Standard_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 1024  # 1TB
+  disk_size_gb         = 1024 # 1TB
 
   tags = local.common_tags
 }
