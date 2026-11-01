@@ -128,6 +128,7 @@ resource "azurerm_linux_virtual_machine" "ansible" {
   }
 
   custom_data = base64encode(templatefile("${path.module}/cloud-init-ansible.yaml", {
+    admin_username    = var.admin_username
     postgres_host     = azurerm_postgresql_flexible_server.main.fqdn
     postgres_user     = var.admin_username
     postgres_password = var.guacamole_db_password

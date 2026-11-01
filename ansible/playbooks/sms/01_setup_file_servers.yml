@@ -33,7 +33,7 @@
     
     - name: Create shares directory structure
       win_file:
-        path: "D:\Shares"
+        path: 'D:\Shares'
         state: directory
 
 - name: Display completion message

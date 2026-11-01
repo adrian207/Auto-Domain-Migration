@@ -163,6 +163,7 @@ resource "vsphere_virtual_machine" "ansible" {
 
   extra_config = {
     "guestinfo.userdata" = base64encode(templatefile("${path.module}/cloud-init-ansible.yaml", {
+      admin_username    = var.admin_username
       postgres_host     = var.postgres_ip
       postgres_user     = var.admin_username
       postgres_password = var.postgres_password
