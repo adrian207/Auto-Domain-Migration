@@ -189,6 +189,20 @@ resource "azurerm_virtual_machine_extension" "target_fileserver_config" {
 # NSG Rules for File Server Access
 # =============================================================================
 
+# NSG for the workstations subnet, where the file servers sit.
+# Azure's default rules still allow traffic from inside the VNet and block inbound internet traffic.
+resource "azurerm_network_security_group" "workstations" {
+  name                = "${local.resource_prefix}-workstations-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.common_tags
+}
+
+resource "azurerm_subnet_network_security_group_association" "workstations" {
+  subnet_id                 = azurerm_subnet.workstations.id
+  network_security_group_id = azurerm_network_security_group.workstations.id
+}
+
 # Allow SMB access
 resource "azurerm_network_security_rule" "allow_smb" {
   name                        = "AllowSMB"
@@ -201,7 +215,7 @@ resource "azurerm_network_security_rule" "allow_smb" {
   source_address_prefix       = azurerm_subnet.workstations.address_prefixes[0]
   destination_address_prefix  = "*"
   resource_group_name         = azurerm_resource_group.main.name
-  network_security_group_name = azurerm_network_security_group.main.name
+  network_security_group_name = azurerm_network_security_group.workstations.name
 }
 
 # Allow NetBIOS
@@ -216,6 +230,6 @@ resource "azurerm_network_security_rule" "allow_netbios" {
   source_address_prefix       = azurerm_subnet.workstations.address_prefixes[0]
   destination_address_prefix  = "*"
   resource_group_name         = azurerm_resource_group.main.name
-  network_security_group_name = azurerm_network_security_group.main.name
+  network_security_group_name = azurerm_network_security_group.workstations.name
 }
 
