@@ -11,139 +11,141 @@
     notification_email: "{{ admin_email | default('admin@example.com') }}"
     
   tasks:
-    - name: Display failover information
-      debug:
-        msg:
-          - "🔄 Disaster Recovery Failover Initiated"
-          - "Primary Region: {{ primary_region }}"
-          - "DR Region: {{ dr_region }}"
-          - "Resource Group: {{ resource_group }}"
-          - "Triggered by: {{ trigger_reason | default('Manual') }}"
+    - name: Run failover
+      block:
+        - name: Display failover information
+          debug:
+            msg:
+              - "🔄 Disaster Recovery Failover Initiated"
+              - "Primary Region: {{ primary_region }}"
+              - "DR Region: {{ dr_region }}"
+              - "Resource Group: {{ resource_group }}"
+              - "Triggered by: {{ trigger_reason | default('Manual') }}"
     
-    - name: Verify primary region is down
-      uri:
-        url: "https://management.azure.com/subscriptions/{{ azure_subscription_id }}/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2020-05-01"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ azure_token }}"
-        status_code: 200
-      register: region_status
-      failed_when: false
+        - name: Verify primary region is down
+          uri:
+            url: "https://management.azure.com/subscriptions/{{ azure_subscription_id }}/providers/Microsoft.ResourceHealth/availabilityStatuses?api-version=2020-05-01"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ azure_token }}"
+            status_code: 200
+          register: region_status
+          failed_when: false
     
-    - name: Log region status
-      debug:
-        msg: "Primary region status: {{ region_status.json | default('Unknown') }}"
+        - name: Log region status
+          debug:
+            msg: "Primary region status: {{ region_status.json | default('Unknown') }}"
     
-    - name: Send failover notification
-      mail:
-        host: smtp.gmail.com
-        port: 587
-        username: "{{ smtp_username }}"
-        password: "{{ smtp_password }}"
-        to: "{{ notification_email }}"
-        subject: "🚨 DR Failover Initiated - {{ primary_region }} → {{ dr_region }}"
-        body: |
-          Disaster Recovery Failover has been initiated.
+        - name: Send failover notification
+          mail:
+            host: smtp.gmail.com
+            port: 587
+            username: "{{ smtp_username }}"
+            password: "{{ smtp_password }}"
+            to: "{{ notification_email }}"
+            subject: "🚨 DR Failover Initiated - {{ primary_region }} → {{ dr_region }}"
+            body: |
+              Disaster Recovery Failover has been initiated.
           
-          Details:
-          - Primary Region: {{ primary_region }}
-          - DR Region: {{ dr_region }}
-          - Time: {{ ansible_date_time.iso8601 }}
-          - Trigger: {{ trigger_reason | default('Manual') }}
+              Details:
+              - Primary Region: {{ primary_region }}
+              - DR Region: {{ dr_region }}
+              - Time: {{ ansible_date_time.iso8601 }}
+              - Trigger: {{ trigger_reason | default('Manual') }}
           
-          Status: In Progress
-          Estimated completion: 4 hours
+              Status: In Progress
+              Estimated completion: 4 hours
           
-          Dashboard: https://portal.azure.com
-        body:
-      when: smtp_username is defined
-      failed_when: false
+              Dashboard: https://portal.azure.com
+            body:
+          when: smtp_username is defined
+          failed_when: false
     
-    - name: Deploy DR infrastructure
-      command: |
-        terraform apply \
-          -var="location={{ dr_region }}" \
-          -var="environment=dr" \
-          -var="resource_group_name={{ resource_group }}" \
-          -auto-approve
-      args:
-        chdir: "{{ playbook_dir }}/../../terraform/azure-tier2"
-      register: terraform_deploy
-      async: 3600
-      poll: 30
+        - name: Deploy DR infrastructure
+          command: |
+            terraform apply \
+              -var="location={{ dr_region }}" \
+              -var="environment=dr" \
+              -var="resource_group_name={{ resource_group }}" \
+              -auto-approve
+          args:
+            chdir: "{{ playbook_dir }}/../../terraform/azure-tier2"
+          register: terraform_deploy
+          async: 3600
+          poll: 30
     
-    - name: Wait for infrastructure deployment
-      async_status:
-        jid: "{{ terraform_deploy.ansible_job_id }}"
-      register: job_result
-      until: job_result.finished
-      retries: 120
-      delay: 30
+        - name: Wait for infrastructure deployment
+          async_status:
+            jid: "{{ terraform_deploy.ansible_job_id }}"
+          register: job_result
+          until: job_result.finished
+          retries: 120
+          delay: 30
     
-    - name: Restore virtual machines
-      include_tasks: restore-vms.yml
-      loop:
-        - dc01-source
-        - dc01-target
-        - fs01-source
-        - fs01-target
-      loop_control:
-        loop_var: vm_name
+        - name: Restore virtual machines
+          include_tasks: restore-vms.yml
+          loop:
+            - dc01-source
+            - dc01-target
+            - fs01-source
+            - fs01-target
+          loop_control:
+            loop_var: vm_name
     
-    - name: Restore databases
-      include_tasks: restore-databases.yml
+        - name: Restore databases
+          include_tasks: restore-databases.yml
     
-    - name: Update DNS records
-      include_tasks: update-dns.yml
+        - name: Update DNS records
+          include_tasks: update-dns.yml
     
-    - name: Verify services
-      include_tasks: verify-services.yml
+        - name: Verify services
+          include_tasks: verify-services.yml
     
-    - name: Send completion notification
-      mail:
-        host: smtp.gmail.com
-        port: 587
-        username: "{{ smtp_username }}"
-        password: "{{ smtp_password }}"
-        to: "{{ notification_email }}"
-        subject: "✅ DR Failover Complete - Running in {{ dr_region }}"
-        body: |
-          Disaster Recovery Failover has completed successfully.
+        - name: Send completion notification
+          mail:
+            host: smtp.gmail.com
+            port: 587
+            username: "{{ smtp_username }}"
+            password: "{{ smtp_password }}"
+            to: "{{ notification_email }}"
+            subject: "✅ DR Failover Complete - Running in {{ dr_region }}"
+            body: |
+              Disaster Recovery Failover has completed successfully.
           
-          All services are now running in: {{ dr_region }}
+              All services are now running in: {{ dr_region }}
           
-          Status: ✅ Complete
-          Duration: {{ job_result.delta }}
+              Status: ✅ Complete
+              Duration: {{ job_result.delta }}
           
-          Next Steps:
-          1. Verify all services
-          2. Test user access
-          3. Monitor for issues
-          4. Plan failback when primary region recovers
+              Next Steps:
+              1. Verify all services
+              2. Test user access
+              3. Monitor for issues
+              4. Plan failback when primary region recovers
           
-          Dashboard: https://portal.azure.com
-      when: smtp_username is defined
-      failed_when: false
+              Dashboard: https://portal.azure.com
+          when: smtp_username is defined
+          failed_when: false
   
-  rescue:
-    - name: Failover failed notification
-      mail:
-        host: smtp.gmail.com
-        port: 587
-        username: "{{ smtp_username }}"
-        password: "{{ smtp_password }}"
-        to: "{{ notification_email }}"
-        subject: "❌ DR Failover FAILED"
-        body: |
-          CRITICAL: Disaster Recovery Failover has FAILED.
+      rescue:
+        - name: Failover failed notification
+          mail:
+            host: smtp.gmail.com
+            port: 587
+            username: "{{ smtp_username }}"
+            password: "{{ smtp_password }}"
+            to: "{{ notification_email }}"
+            subject: "❌ DR Failover FAILED"
+            body: |
+              CRITICAL: Disaster Recovery Failover has FAILED.
           
-          Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
           
-          Immediate action required.
-          Escalate to on-call engineer.
-      when: smtp_username is defined
+              Immediate action required.
+              Escalate to on-call engineer.
+          when: smtp_username is defined
     
-    - name: Fail playbook
-      fail:
-        msg: "Disaster Recovery Failover failed: {{ ansible_failed_result.msg | default('Unknown') }}"
+        - name: Fail playbook
+          fail:
+            msg: "Disaster Recovery Failover failed: {{ ansible_failed_result.msg | default('Unknown') }}"
 
